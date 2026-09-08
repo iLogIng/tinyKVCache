@@ -2,6 +2,7 @@
 #include "kv/engine.hpp"
 #include "kv/regcmd.hpp"
 
+#include <cstddef>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -9,6 +10,9 @@
 namespace {
 
 using kv::kSpecs;
+
+// 会话默认缓存容量
+constexpr std::size_t kDefaultCapacity = 64;
 
 // 空输入时的命令列表提示
 void print_commands()
@@ -24,7 +28,7 @@ void print_commands()
 
 int main(int argc, char* argv[])
 {
-    kv::Engine engine;
+    kv::Engine engine{kDefaultCapacity};
 
     // argv 单条命令
     if (argc > 1) {

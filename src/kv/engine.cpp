@@ -1,44 +1,154 @@
 #include "kv/engine.hpp"
 
+#include <stdexcept>
+#include <utility>
+
 namespace kv {
+
+Engine::Engine(std::size_t capacity) : capacity_(capacity)
+{
+    if (capacity_ == 0) {
+        throw std::invalid_argument("capacity must be > 0");
+    }
+    cache.resize(capacity_);
+    frstk.reserve(capacity_);
+    for (int i = static_cast<int>(capacity_) - 1; i >= 0; --i) {
+        frstk.push_back(i);
+    }
+}
 
 void Engine::put(const std::string& key, const std::string& value)
 {
-    cache[key] = value;
+    auto it = catalog.find(key);
+    // 已存在: 覆盖并刷新为最近使用
+    if (it != catalog.end()) {
+        int idx = it->second;
+        cache[idx].value = value;
+        if (idx != head_) {
+            unlink(idx);
+            push_front(idx);
+        }
+        return;
+    }
+
+    int idx;
+    if (!frstk.empty()) {
+        // 有空槽: 取一个
+        idx = frstk.back();
+        frstk.pop_back();
+    }
+    else {
+        // 满: 淘汰最久未用, 复用其槽
+        idx = tail_;
+        std::string victim = std::move(cache[idx].key);
+        catalog.erase(victim);
+        unlink(idx);
+    }
+
+    cache[idx].key = key;
+    cache[idx].value = value;
+    catalog[key] = idx;
+    push_front(idx);
 }
 
-std::optional<std::string> Engine::get(const std::string& key) const
+std::optional<std::string> Engine::get(const std::string& key)
 {
-    auto it = cache.find(key);
-    if (it == cache.end()) {
+    auto it = catalog.find(key);
+    if (it == catalog.end()) {
         return std::nullopt;
     }
-    return it->second;
+    int idx = it->second;
+    if (idx != head_) {
+        unlink(idx);
+        push_front(idx);
+    }
+    return cache[idx].value;
 }
 
 bool Engine::erase(const std::string& key)
 {
-    return cache.erase(key) > 0;
+    auto it = catalog.find(key);
+    if (it == catalog.end()) {
+        return false;
+    }
+    int idx = it->second;
+    unlink(idx);
+    catalog.erase(it);
+    frstk.push_back(idx);
+    cache[idx].key.clear();
+    cache[idx].value.clear();
+    return true;
 }
 
 void Engine::clear() noexcept
 {
-    cache.clear();
+    catalog.clear();
+    for (Slot& s : cache) {
+        s.key.clear();
+        s.value.clear();
+        s.prev = -1;
+        s.next = -1;
+    }
+    frstk.clear();
+    frstk.reserve(capacity_);
+    for (int i = 0; i < static_cast<int>(capacity_); ++i) {
+        frstk.push_back(i);
+    }
+    head_ = -1;
+    tail_ = -1;
 }
 
 std::size_t Engine::size() const noexcept
 {
-    return cache.size();
+    return catalog.size();
+}
+
+std::size_t Engine::capacity() const noexcept
+{
+    return capacity_;
 }
 
 std::vector<std::pair<std::string, std::string>> Engine::items() const
 {
     std::vector<std::pair<std::string, std::string>> out;
-    out.reserve(cache.size());
-    for (const auto& [key, value] : cache) {
-        out.emplace_back(key, value);
+    out.reserve(catalog.size());
+    for (int i = head_; i != -1; i = cache[i].next) {
+        out.emplace_back(cache[i].key, cache[i].value);
     }
     return out;
+}
+
+void Engine::unlink(int idx) noexcept
+{
+    int prev = cache[idx].prev;
+    int next = cache[idx].next;
+    if (prev != -1) {
+        cache[prev].next = next;
+    }
+    else {
+        head_ = next;
+    }
+    if (next != -1) {
+        cache[next].prev = prev;
+    }
+    else {
+        tail_ = prev;
+    }
+    cache[idx].prev = -1;
+    cache[idx].next = -1;
+}
+
+void Engine::push_front(int idx) noexcept
+{
+    cache[idx].prev = -1;
+    cache[idx].next = head_;
+    if (head_ != -1) {
+        cache[head_].prev = idx;
+    }
+    else {
+        tail_ = idx;
+    }
+    head_ = idx;
 }
 
 }  // namespace kv

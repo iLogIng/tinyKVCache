@@ -9,7 +9,7 @@ cmake -B build
 cmake --build build
 ```
 
-产物：`build/KVCache`，C++17，编译带 `-Wall -Wextra`。
+产物：`build/KVCache`，C++17，编译 `-Wall -Wextra`。
 
 ## USE 用法
 
@@ -59,7 +59,33 @@ src/kv/
 命令表是单一真相源：`CommandSpec` 自带 handler。加/改命令只需改 regcmd.cpp（表加一行 + 定义 handler），cli 层零改动。空行跳过，坏命令仅报错不退出进程。
 解析链单向：`tokenize -> parse(查表校验) -> dispatcher -> Engine`。
 加命令只改两处：`cli.cpp` 命令表加一行，`run.cpp` 登记对应 handler。
-解析层只产出结构化命令，不执行、不 exit，因此坏命令不会杀死会话。
+解析层只产出结构化命令，不执行、不退出，因此坏命令不会杀死会话。
+
+## LRU 机制
+
+> 对于缓冲设计与最近最少使用的选择
+
+**数据结构：**
+- 使用数组式侵入链表
+- 存储元素结构设计
+    ```cpp
+    struct Slot {
+        std::string key;        // 键
+        std::string value;      // 值
+        uint32_t prev;      // 前一节点
+        uint32_t next;      // 后一节点
+    };
+    ```
+- 依赖stl
+    - `vector`
+        - `<Slot>` 作为真正的缓存
+        - `<int>` 作为 *栈* 存在，保存空闲的缓存下标
+    - `unordered_map` 作为 **键-下标** 映射目录 **key --> index**
+- 标志
+    - `head` 指示 LMU
+    - `tail` 指示 LRU
+
+
 
 ## NEXT
 
