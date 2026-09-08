@@ -7,6 +7,8 @@
 
 namespace kv {
 
+class Engine;  // 仅前置声明，供 handler 签名使用
+
 enum class ParseError {
     Ok = 0,
     UnknownCommand,
@@ -19,12 +21,13 @@ struct Command {
     std::vector<std::string> args;  // 参数
 };
 
-/* 命令的声明式描述 */
+/* 命令的声明式描述：语法 + 行为（handler 定义在 regcmd.cpp） */
 struct CommandSpec {
-    std::string_view name;      // 命令名称
-    int min_args;               // 最小参数
-    int max_args;               // 最大参数
-    std::string_view usage;     // 命令说明
+    std::string_view name;                 // 命令名称
+    int min_args;                          // 最小参数
+    int max_args;                          // 最大参数
+    std::string_view usage;                // 命令说明
+    void (*handler)(Engine&, const Command&);  // 命令行为
 };
 
 /* 命令表，以空 name 结尾 */

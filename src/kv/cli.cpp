@@ -4,19 +4,6 @@
 
 namespace kv {
 
-// command space
-const CommandSpec kSpecs[] = {
-    { "put", 2, 2, "put <key> <value>" },
-    { "get", 1, 1, "get <key>" },
-    { "del", 1, 1, "del <key>" },
-    { "clr", 0, 0, "clr" },
-    { "lst", 0, 0, "lst" },
-    { "exit", 0, 0, "exit"},
-    { "quit", 0, 0, "quit"},
-    { "help", 0, 0, "help"},
-    { "", 0, 0, "" },
-};
-
 // key "value" 解析器
 std::vector<std::string> tokenize(const std::string& line)
 {

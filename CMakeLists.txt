@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(KVCache
     src/kv/cli.cpp
     src/kv/engine.cpp
+    src/kv/regcmd.cpp
     src/kv/run.cpp
 )
 
