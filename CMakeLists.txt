@@ -8,12 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_executable(KVCache
-    main.cpp
+    src/kv/cli.cpp
+    src/kv/engine.cpp
+    src/kv/run.cpp
 )
 
-target_include_directories(KVCache PRIVATE
-    include
-    include/kv
-    src
-)
+target_include_directories(KVCache PRIVATE include)
 
+target_compile_options(KVCache PRIVATE -Wall -Wextra)
