@@ -2,4 +2,6 @@ build/
 .cache/
 output/
 docs/
+scripts/
+TODO.md
 

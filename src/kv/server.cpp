@@ -59,7 +59,8 @@ Reply run_request(Engine& engine, const std::vector<std::string>& tokens)
     }
     std::ostringstream out, err;
     kv::exec(engine, tokens, out, err);
-    // 响应体: 内容行以 \n 收尾, 再补一个 \n 作空行帧尾; 空体 -> 单个空行(静默成功)
+    // 响应体: 内容行以 \n 收尾, 再添加 \n 作空行帧尾;
+    // 空体 -> 单个空行
     std::string body = out.str() + err.str();
     if (!body.empty() && body.back() != '\n') {
         body += '\n';
@@ -68,7 +69,7 @@ Reply run_request(Engine& engine, const std::vector<std::string>& tokens)
     return reply;
 }
 
-// 可读事件: 读入缓冲并按 \n 切出请求逐条执行
+// 可读事件: 读入缓冲并按 \n 切分请求逐条执行
 void on_readable(Engine& engine, Conn& c)
 {
     char buf[4096];
@@ -201,7 +202,7 @@ int main(int argc, char* argv[])
     std::vector<Conn> conns;
 
     for (;;) {
-        // 先算最大 fd, 防 FD_SET 越界(FD_SETSIZE)
+        // 先计算最大 fd, 防止 FD_SET 越界
         int maxfd = lfd;
         for (const Conn& c : conns) {
             if (c.fd > maxfd) {
@@ -210,15 +211,16 @@ int main(int argc, char* argv[])
         }
         if (maxfd + 1 > FD_SETSIZE) {
             std::cerr << "server: fd overflow, drop fd " << maxfd << '\n';
-            conns.erase(std::remove_if(conns.begin(), conns.end(),
-                                       [maxfd](Conn& c) {
-                                           if (c.fd == maxfd) {
-                                               ::close(c.fd);
-                                               return true;
-                                           }
-                                           return false;
-                                       }),
-                        conns.end());
+            conns.erase(
+                std::remove_if(conns.begin(), conns.end(),
+                    [maxfd](Conn& c) {
+                        if (c.fd == maxfd) {
+                            ::close(c.fd);
+                            return true;
+                        }
+                        return false;
+                    }),
+                conns.end());
             continue;
         }
 
