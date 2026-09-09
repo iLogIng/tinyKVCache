@@ -4,6 +4,7 @@
 
 namespace kv {
 
+#if 0
 // "cmdop" "key" "value" 解析器
 std::vector<std::string> tokenize(const std::string& line)
 {
@@ -12,7 +13,7 @@ std::vector<std::string> tokenize(const std::string& line)
     bool in_quote = false;
     bool started = false;
 
-    // 脱去 命令、参数 两边的引号
+    // 脱去 命令、参数 两边的 单、双引号
     for (size_t i = 0; i < line.size(); ++i) {
         const char ch = line[i];
         // 引号内部
@@ -54,6 +55,59 @@ std::vector<std::string> tokenize(const std::string& line)
     }
     return out;
 }
+#else
+// "cmdop" "key" "value" 解析器
+std::vector<std::string> tokenize(const std::string& line)
+{
+    std::vector<std::string> out;
+    std::string cur;
+    char quote_char = 0;    // 记录目前的引号类型 " / '
+    bool started = false;
+
+    // 脱去 命令、参数 两边的 单、双引号
+    for (size_t i = 0; i < line.size(); ++i) {
+        const char ch = line[i];
+        // 字符转译
+        if (ch == '\\' && i + 1 < line.size()) {
+            cur.push_back(line[++i]);
+            started = true;
+        }
+        // 引号内
+        else if (ch == '"' || ch == '\'') {
+            // 进入引号模式
+            if (quote_char == 0) {
+                quote_char = ch;
+            }
+            // 退出引号模式
+            else if (quote_char == ch) {
+                quote_char = 0;
+            }
+            else {
+                cur.push_back(ch);
+                started = true;
+            }
+        }
+        // 在引号外 空白字符作为分隔符
+        else if (quote_char == 0 && (ch == ' ' || ch == '\t')) {
+            if (started) {
+                out.push_back(std::move(cur));
+                cur.clear();
+                started = false;
+            }
+        }
+        // 记录普通字符
+        else {
+            cur.push_back(ch);
+            started = true;
+        }
+    }
+
+    if (started) {
+        out.push_back(std::move(cur));
+    }
+    return out;
+}
+#endif
 
 // 解析
 ParseError parse(const std::vector<std::string>& tokens, Command& out)

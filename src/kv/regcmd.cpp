@@ -19,10 +19,10 @@ void cmd_get(Engine& e, const Command& c)
 {
     const std::string& key = c.args[0];
     if (auto value = e.get(key)) {
-        std::cout << key << ',' << *value << '\n';
+        std::cout << key << "->" << *value << '\n';
     }
     else {
-        std::cout << key << " not found\n";
+        std::cout << '\'' << key << "' not found\n";
     }
 }
 
