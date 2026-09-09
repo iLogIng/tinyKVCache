@@ -9,6 +9,8 @@
 
 namespace kv {
 
+class Journal;  // 前置声明, 内存引擎只持有日志指针
+
 // 槽位:
 // key/value 侵入式双链
 // 下标代替指针, -1 表示空
@@ -46,6 +48,14 @@ public:
     // 全量快照(按 LRU 排序), 供遍历输出
     std::vector<std::pair<std::string, std::string>> items() const;
 
+    // 挂接持久化日志: 写操作先记日志再改内存
+    void attach(Journal& journal);
+
+    void detach() noexcept;
+
+    // 从日志回放写序列重建内存(回放期间不自我记日志)
+    bool replay(Journal& journal);
+
 private:
     void unlink(int idx) noexcept;      // 从链上摘下 idx
     void push_front(int idx) noexcept;  // 挂 idx 为最近使用
@@ -56,6 +66,7 @@ private:
     std::vector<int> frstk;     // 空闲槽栈
     int head_ = -1;  // 链端点 MRU
     int tail_ = -1;  // 链端点 LRU
+    Journal* journal_ = nullptr;
 };
 
 }  // namespace kv

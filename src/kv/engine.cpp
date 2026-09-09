@@ -1,9 +1,19 @@
 #include "kv/engine.hpp"
+#include "kv/journal.hpp"
 
+#include <iostream>
 #include <stdexcept>
 #include <utility>
 
 namespace kv {
+
+namespace {
+// 日志追加失败的兜底提示
+void warn_journal_fail()
+{
+    std::cerr << "engine: journal append failed\n";
+}
+}  // namespace
 
 Engine::Engine(std::size_t capacity) : capacity_(capacity)
 {
@@ -19,6 +29,9 @@ Engine::Engine(std::size_t capacity) : capacity_(capacity)
 
 void Engine::put(const std::string& key, const std::string& value)
 {
+    if (journal_ != nullptr && !journal_->append(Op::Put, key, value)) {
+        warn_journal_fail();
+    }
     auto it = catalog.find(key);
     // 已存在: 覆盖并刷新为最近使用
     if (it != catalog.end()) {
@@ -71,6 +84,9 @@ bool Engine::erase(const std::string& key)
     if (it == catalog.end()) {
         return false;
     }
+    if (journal_ != nullptr && !journal_->append(Op::Del, key, "")) {
+        warn_journal_fail();
+    }
     int idx = it->second;
     unlink(idx);
     catalog.erase(it);
@@ -82,6 +98,9 @@ bool Engine::erase(const std::string& key)
 
 void Engine::clear() noexcept
 {
+    if (journal_ != nullptr && !journal_->append(Op::Clear, "", "")) {
+        warn_journal_fail();
+    }
     catalog.clear();
     for (Slot& s : cache) {
         s.key.clear();
@@ -149,6 +168,37 @@ void Engine::push_front(int idx) noexcept
         tail_ = idx;
     }
     head_ = idx;
+}
+
+void Engine::attach(Journal& journal)
+{
+    journal_ = &journal;
+}
+
+void Engine::detach() noexcept
+{
+    journal_ = nullptr;
+}
+
+bool Engine::replay(Journal& journal)
+{
+    Journal* saved = journal_;
+    journal_ = nullptr;  // 回放期间不把重建过程再写回日志
+    const bool ok = journal.replay([this](const Record& r) {
+        switch (r.op) {
+            case Op::Put:
+                put(r.key, r.value);
+                break;
+            case Op::Del:
+                erase(r.key);
+                break;
+            case Op::Clear:
+                clear();
+                break;
+        }
+    });
+    journal_ = saved;
+    return ok;
 }
 
 }  // namespace kv

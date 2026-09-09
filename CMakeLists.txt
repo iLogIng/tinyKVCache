@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(kvcache_core STATIC
     src/kv/cli.cpp
     src/kv/engine.cpp
+    src/kv/journal.cpp
     src/kv/regcmd.cpp
 )
 
@@ -48,6 +49,7 @@ FetchContent_MakeAvailable(catch2)
 add_executable(kv_tests
     tests/test_engine.cpp
     tests/test_cli.cpp
+    tests/test_journal.cpp
 )
 target_link_libraries(kv_tests PRIVATE kvcache_core Catch2::Catch2WithMain)
 target_compile_options(kv_tests PRIVATE -Wall -Wextra)
