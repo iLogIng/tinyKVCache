@@ -20,6 +20,21 @@ add_executable(KVCache src/kv/run.cpp)
 target_link_libraries(KVCache PRIVATE kvcache_core)
 target_compile_options(KVCache PRIVATE -Wall -Wextra)
 
+add_library(kvcache_net STATIC
+    src/kv/net.cpp
+)
+
+target_include_directories(kvcache_net PUBLIC include)
+target_compile_options(kvcache_net PRIVATE -Wall -Wextra)
+
+add_executable(KVCacheServer src/kv/server.cpp)
+target_link_libraries(KVCacheServer PRIVATE kvcache_core kvcache_net)
+target_compile_options(KVCacheServer PRIVATE -Wall -Wextra)
+
+add_executable(KVCacheClient src/kv/client.cpp)
+target_link_libraries(KVCacheClient PRIVATE kvcache_net)
+target_compile_options(KVCacheClient PRIVATE -Wall -Wextra)
+
 enable_testing()
 
 include(FetchContent)
