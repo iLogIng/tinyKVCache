@@ -15,7 +15,8 @@ void warn_journal_fail()
 }
 }  // namespace
 
-Engine::Engine(std::size_t capacity) : capacity_(capacity)
+Engine::Engine(std::size_t capacity)
+    : capacity_(capacity)
 {
     if (capacity_ == 0) {
         throw std::invalid_argument("capacity must be > 0");

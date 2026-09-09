@@ -91,7 +91,7 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
     return true;
 }
 
-// 响应记录
+// 使用on_record响应重建记录
 bool Journal::replay(const std::function<void(const Record&)>& on_record)
 {
     if (fd_ < 0) {

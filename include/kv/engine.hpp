@@ -9,7 +9,7 @@
 
 namespace kv {
 
-class Journal;  // 前置声明, 内存引擎只持有日志指针
+class Journal;
 
 // 槽位:
 // key/value 侵入式双链
