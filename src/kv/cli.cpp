@@ -4,7 +4,7 @@
 
 namespace kv {
 
-// key "value" 解析器
+// "cmdop" "key" "value" 解析器
 std::vector<std::string> tokenize(const std::string& line)
 {
     std::vector<std::string> out;
@@ -12,6 +12,7 @@ std::vector<std::string> tokenize(const std::string& line)
     bool in_quote = false;
     bool started = false;
 
+    // 脱去 命令、参数 两边的引号
     for (size_t i = 0; i < line.size(); ++i) {
         const char ch = line[i];
         // 引号内部
@@ -20,7 +21,7 @@ std::vector<std::string> tokenize(const std::string& line)
             if (ch == '"') {
                 in_quote = false;
             }
-            else if (ch == '\\' && i + 1 < line.size()) { // 遇到 '\'
+            else if (ch == '\\' && i + 1 < line.size()) { // 转译
                 cur.push_back(line[++i]);
             }
             else {
@@ -32,13 +33,14 @@ std::vector<std::string> tokenize(const std::string& line)
             started = true;
         }
         else if (ch == ' ' || ch == '\t') { // 开始新的 key "value"
+            // 将解析的 key/value 追加为命令参数
             if (started) {
                 out.push_back(std::move(cur));
                 cur.clear();
                 started = false;
             }
         }
-        else if (ch == '\\' && i + 1 < line.size()) { // 遇到 '\'
+        else if (ch == '\\' && i + 1 < line.size()) { // 转译
             cur.push_back(line[++i]);
             started = true;
         }

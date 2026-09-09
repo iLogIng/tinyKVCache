@@ -10,7 +10,7 @@
 namespace kv {
 
 /* 查表校验并执行一条命令。
-   返回 0 成功，2 为解析/参数错误（已打印到 stderr），绝不退出进程。 */
+ * 返回 0 成功，2 为解析/参数错误（打印到 stderr），绝不退出进程。 */
 int exec(Engine& engine, const std::vector<std::string>& tokens);
 
 }  // namespace kv

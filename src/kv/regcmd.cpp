@@ -1,4 +1,5 @@
 #include "kv/regcmd.hpp"
+#include "kv/cli.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -55,7 +56,6 @@ void cmd_help(Engine&, const Command&);
 /**
  * 命令表
  * 语法, 行为
- * 将 空name 作为哨兵
 */
 const CommandSpec kSpecs[] = {
     { "put",  2, 2, "put <key> <value>", cmd_put },
@@ -66,13 +66,12 @@ const CommandSpec kSpecs[] = {
     { "exit", 0, 0, "exit",              cmd_exit },
     { "quit", 0, 0, "quit",              cmd_exit },
     { "help", 0, 0, "help",              cmd_help },
-    { "",     0, 0, "",                  nullptr },
 };
 
 void cmd_help(Engine&, const Command&)
 {
-    for (size_t i = 0; kSpecs[i].name.size() > 0; ++i) {
-        std::cout << "    " << kSpecs[i].usage << '\n';
+    for (const auto& k : kSpecs) {
+        std::cout << "    " << k.usage << '\n';
     }
 }
 
@@ -99,9 +98,9 @@ int exec(Engine& engine, const std::vector<std::string>& tokens)
             return 2;
     }
 
-    for (size_t i = 0; kSpecs[i].name.size() > 0; ++i) {
-        if (kSpecs[i].name == cmd.name) {
-            kSpecs[i].handler(engine, cmd);
+    for (const auto& k : kSpecs) {
+        if (k.name == cmd.name) {
+            k.handler(engine, cmd);
             return 0;
         }
     }
