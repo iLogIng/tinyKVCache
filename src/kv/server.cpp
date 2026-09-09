@@ -57,11 +57,13 @@ Reply run_request(Engine& engine, const std::vector<std::string>& tokens)
         reply.close = true;
         return reply;
     }
-    std::ostringstream out, err;
-    kv::exec(engine, tokens, out, err);
+    std::ostringstream out;
+    if (auto err = kv::exec(engine, tokens, out)) {
+        std::cerr << "server: " << *err;   // 错误只本地打日志, 不回传客户端
+    }
     // 响应体: 内容行以 \n 收尾, 再添加 \n 作空行帧尾;
-    // 空体 -> 单个空行
-    std::string body = out.str() + err.str();
+    // 空体(静默成功/出错) -> 单个空行
+    std::string body = out.str();
     if (!body.empty() && body.back() != '\n') {
         body += '\n';
     }

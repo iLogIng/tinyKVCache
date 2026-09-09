@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <optional>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -73,37 +75,42 @@ void cmd_help(Engine&, const Command&, std::ostream& out)
     }
 }
 
-/**
- * 查表校验并执行。空 tokens 跳过；
- * 解析/参数错误打印 err 并返回 2。
-*/
-int exec(Engine& engine, const std::vector<std::string>& tokens,
-         std::ostream& out, std::ostream& err)
+// 查表校验并执行。空 tokens 跳过。
+// 成功: 结果写 out 返回 nullopt; 失败: 返回错误文本, out 不变。
+std::optional<std::string> exec(Engine& engine,
+                                const std::vector<std::string>& tokens,
+                                std::ostream& out)
 {
     if (tokens.empty()) {
-        return 0;
+        return std::nullopt;
     }
 
     Command cmd;
     switch (parse(tokens, cmd)) {
         case ParseError::Ok:
             break;
-        case ParseError::UnknownCommand:
-            err << "error: unknown command '" << tokens[0] << "'\n";
-            return 2;
-        case ParseError::WrongArgCount:
-            err << "error: wrong argument count for '" << tokens[0] << "'\n"
+        case ParseError::UnknownCommand: {
+            std::ostringstream msg;
+            msg << "error: unknown command '" << tokens[0] << "'\n";
+            return msg.str();
+        }
+        case ParseError::WrongArgCount: {
+            std::ostringstream msg;
+            msg << "error: wrong argument count for '" << tokens[0] << "'\n"
                 << "  usage: " << usage_of(tokens[0]) << '\n';
-            return 2;
+            return msg.str();
+        }
     }
 
     for (const auto& k : commands()) {
         if (k.name == cmd.name) {
             k.handler(engine, cmd, out);
-            return 0;
+            return std::nullopt;
         }
     }
-    return 2;
+    std::ostringstream msg;
+    msg << "error: unknown command '" << tokens[0] << "'\n";
+    return msg.str();
 }
 
 }  // namespace kv

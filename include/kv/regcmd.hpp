@@ -2,6 +2,7 @@
 #define KV_REGCMD_HPP
 
 #include <iosfwd>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -11,9 +12,10 @@
 namespace kv {
 
 // 查表校验并执行一条命令。
-// 返回 0 成功，2 为解析/参数错误(打印到 err)，不退出进程。
-int exec(Engine& engine, const std::vector<std::string>& tokens,
-         std::ostream& out, std::ostream& err);
+// 成功: 结果写入 out, 返回 nullopt; 失败: 返回错误文本(供本地打印), out 不变。
+std::optional<std::string> exec(Engine& engine,
+                                const std::vector<std::string>& tokens,
+                                std::ostream& out);
 
 }  // namespace kv
 
