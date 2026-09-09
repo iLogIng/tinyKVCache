@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <ostream>
@@ -22,24 +23,27 @@ namespace {
 using kv::Engine;
 using kv::kDefaultPort;
 
+// 设置不阻塞
 void set_nonblock(int fd)
 {
     const int flags = ::fcntl(fd, F_GETFL, 0);
     ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+// 连接
 struct Conn
 {
     int fd;
     std::string in;    // 未成行的读缓冲
     std::string out;   // 待发送缓冲
-    bool gone = false;
+    bool gone = false; // 可发送？
 };
 
+// 响应
 struct Reply
 {
-    std::string body;  // 已含空行帧尾
-    bool close = false;
+    std::string body;   // 已含空行帧尾
+    bool close = false; // 断开
 };
 
 // 一条请求 -> 响应帧; exit/quit 触发 close
@@ -55,38 +59,51 @@ Reply run_request(Engine& engine, const std::vector<std::string>& tokens)
     }
     std::ostringstream out, err;
     kv::exec(engine, tokens, out, err);
-    reply.body = out.str() + err.str() + "\n";  // 空行帧尾
+    // 响应体: 内容行以 \n 收尾, 再补一个 \n 作空行帧尾; 空体 -> 单个空行(静默成功)
+    std::string body = out.str() + err.str();
+    if (!body.empty() && body.back() != '\n') {
+        body += '\n';
+    }
+    reply.body = std::move(body) + "\n";
     return reply;
 }
 
-// 有可读事件: 读入缓冲并按 \n 切出请求逐条执行
+// 可读事件: 读入缓冲并按 \n 切出请求逐条执行
 void on_readable(Engine& engine, Conn& c)
 {
     char buf[4096];
     for (;;) {
+        // 接收到的字节数量
         const ssize_t n = ::recv(c.fd, buf, sizeof(buf), 0);
         if (n > 0) {
+            // 将接收的 buf 附加到接收缓冲
             c.in.append(buf, static_cast<std::size_t>(n));
             for (;;) {
+                // 按 \n 切分
                 const std::size_t pos = c.in.find('\n');
                 if (pos == std::string::npos) {
                     break;
                 }
+                // 取出一行命令
                 std::string line = c.in.substr(0, pos);
                 c.in.erase(0, pos + 1);
+                // 检查是否在限制大小内
                 if (line.size() > kv::kMaxLine) {
                     c.gone = true;
                     return;
                 }
+                // 执行请求
                 const Reply r = run_request(engine, kv::tokenize(line));
                 if (!r.body.empty()) {
                     c.out += r.body;
                 }
+                // 关闭连接
                 if (r.close) {
                     c.gone = true;
                     return;
                 }
             }
+            // 大于最大可返回行
             if (c.in.size() > kv::kMaxLine) {
                 c.gone = true;
             }
@@ -102,18 +119,22 @@ void on_readable(Engine& engine, Conn& c)
             return;
         }
         else {
+            std::cerr << "server: recv error on fd " << c.fd << ": "
+                      << std::strerror(errno) << '\n';
             c.gone = true;
             return;
         }
     }
 }
 
-// 有可写事件: 尽量发完 out 缓冲
+// 可写事件: 尽量发完 out 缓冲
 void on_writable(Conn& c)
 {
+    // 响应缓冲为空
     if (c.out.empty()) {
         return;
     }
+    // 发送的缓冲长度
     const ssize_t n = ::send(c.fd, c.out.data(), c.out.size(), MSG_NOSIGNAL);
     if (n > 0) {
         c.out.erase(0, static_cast<std::size_t>(n));
@@ -125,6 +146,8 @@ void on_writable(Conn& c)
         return;
     }
     else {
+        std::cerr << "server: send error on fd " << c.fd << ": "
+                  << std::strerror(errno) << '\n';
         c.gone = true;
     }
 }
@@ -133,6 +156,10 @@ void on_writable(Conn& c)
 
 int main(int argc, char* argv[])
 {
+    if (argc == 1 || argc > 3) {
+        std::cerr << "<port> <capacity>\n";
+        return 1;
+    }
     const unsigned short port = argc > 1
         ? static_cast<unsigned short>(std::strtoul(argv[1], nullptr, 10))
         : kDefaultPort;
@@ -140,6 +167,7 @@ int main(int argc, char* argv[])
         ? static_cast<std::size_t>(std::strtoull(argv[2], nullptr, 10))
         : 64;
 
+    // 建立连接
     const int lfd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (lfd < 0) {
         std::cerr << "error: socket()\n";
@@ -149,6 +177,7 @@ int main(int argc, char* argv[])
     ::setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
     set_nonblock(lfd);
 
+    // 连接地址
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -167,25 +196,45 @@ int main(int argc, char* argv[])
     std::cout << "kv-server 127.0.0.1:" << port
               << " capacity=" << capacity << '\n';
 
-    Engine engine(capacity);
+    Engine engine{capacity};
+    // 多个连接
     std::vector<Conn> conns;
 
     for (;;) {
+        // 先算最大 fd, 防 FD_SET 越界(FD_SETSIZE)
+        int maxfd = lfd;
+        for (const Conn& c : conns) {
+            if (c.fd > maxfd) {
+                maxfd = c.fd;
+            }
+        }
+        if (maxfd + 1 > FD_SETSIZE) {
+            std::cerr << "server: fd overflow, drop fd " << maxfd << '\n';
+            conns.erase(std::remove_if(conns.begin(), conns.end(),
+                                       [maxfd](Conn& c) {
+                                           if (c.fd == maxfd) {
+                                               ::close(c.fd);
+                                               return true;
+                                           }
+                                           return false;
+                                       }),
+                        conns.end());
+            continue;
+        }
+
+        // 文件描述符集
         fd_set rfds, wfds;
         FD_ZERO(&rfds);
         FD_ZERO(&wfds);
         FD_SET(lfd, &rfds);
-        int maxfd = lfd;
         for (const Conn& c : conns) {
             FD_SET(c.fd, &rfds);
             if (!c.out.empty()) {
                 FD_SET(c.fd, &wfds);
             }
-            if (c.fd > maxfd) {
-                maxfd = c.fd;
-            }
         }
 
+        // 核心 网络select
         if (::select(maxfd + 1, &rfds, &wfds, nullptr, nullptr) < 0) {
             if (errno == EINTR) {
                 continue;
@@ -197,9 +246,17 @@ int main(int argc, char* argv[])
         // 新连接
         if (FD_ISSET(lfd, &rfds)) {
             for (;;) {
+                // 等待连接到达
                 const int cfd = ::accept(lfd, nullptr, nullptr);
                 if (cfd < 0) {
                     break;  // EAGAIN: 本轮接受完
+                }
+                // 连接数接近 FD_SETSIZE 时拒绝新连接
+                if (conns.size() + 1 >= static_cast<std::size_t>(FD_SETSIZE) - 16) {
+                    std::cerr << "server: connection limit reached, reject fd "
+                              << cfd << '\n';
+                    ::close(cfd);
+                    continue;
                 }
                 set_nonblock(cfd);
                 conns.push_back(Conn{cfd, {}, {}, false});
@@ -211,23 +268,27 @@ int main(int argc, char* argv[])
             if (c.gone) {
                 continue;
             }
+            // 读
             if (FD_ISSET(c.fd, &rfds)) {
                 on_readable(engine, c);
             }
+            // 写
             if (!c.gone && !c.out.empty() && FD_ISSET(c.fd, &wfds)) {
                 on_writable(c);
             }
         }
 
         // 清理关闭的连接
-        conns.erase(std::remove_if(conns.begin(), conns.end(),
-                                   [](const Conn& c) {
-                                       if (c.gone) {
-                                           ::close(c.fd);
-                                       }
-                                       return c.gone;
-                                   }),
-                    conns.end());
+        conns.erase(
+            std::remove_if(
+                conns.begin(), conns.end(),
+                   [](const Conn& c) {
+                       if (c.gone) {
+                           ::close(c.fd);
+                       }
+                       return c.gone;
+                   }),
+                conns.end());
     }
 
     ::close(lfd);
