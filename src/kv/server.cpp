@@ -1,5 +1,6 @@
 #include "kv/cli.hpp"
 #include "kv/engine.hpp"
+#include "kv/journal.hpp"
 #include "kv/net.hpp"
 #include "kv/regcmd.hpp"
 
@@ -21,7 +22,6 @@
 namespace {
 
 using kv::Engine;
-using kv::kDefaultPort;
 
 // 设置不阻塞
 void set_nonblock(int fd)
@@ -157,16 +157,16 @@ void on_writable(Conn& c)
 
 int main(int argc, char* argv[])
 {
-    if (argc == 1 || argc > 3) {
-        std::cerr << "<port> <capacity>\n";
+    if (argc < 2 || argc > 4) {
+        std::cerr << "<port> [<capacity>] [<aof>]\n";
         return 1;
     }
-    const unsigned short port = argc > 1
-        ? static_cast<unsigned short>(std::strtoul(argv[1], nullptr, 10))
-        : kDefaultPort;
+    const unsigned short port = static_cast<unsigned short>(
+        std::strtoul(argv[1], nullptr, 10));
     const std::size_t capacity = argc > 2
         ? static_cast<std::size_t>(std::strtoull(argv[2], nullptr, 10))
         : 64;
+    const char* aof_path = argc > 3 ? argv[3] : "kv.aof";
 
     // 建立连接
     const int lfd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -198,6 +198,17 @@ int main(int argc, char* argv[])
               << " capacity=" << capacity << '\n';
 
     Engine engine{capacity};
+
+    // 持久化: 回放历史写序列后挂接日志
+    kv::Journal journal;
+    if (journal.open(aof_path)) {
+        engine.replay(journal);
+        engine.attach(journal);
+    }
+    else {
+        std::cerr << "engine: persistence disabled (" << aof_path << ")\n";
+    }
+
     // 多个连接
     std::vector<Conn> conns;
 

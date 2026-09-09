@@ -1,5 +1,6 @@
 #include "kv/cli.hpp"
 #include "kv/engine.hpp"
+#include "kv/journal.hpp"
 #include "kv/regcmd.hpp"
 
 #include <cstddef>
@@ -11,6 +12,8 @@ namespace {
 
 // 会话默认缓存容量
 constexpr std::size_t kDefaultCapacity = 64;
+// CLI 持久化日志路径
+constexpr const char* kAofPath = "kv.aof";
 
 // 空输入时的命令列表提示
 void print_commands()
@@ -27,6 +30,16 @@ void print_commands()
 int main(int argc, char* argv[])
 {
     kv::Engine engine{kDefaultCapacity};
+
+    // 持久化: 回放历史写序列后挂接日志
+    kv::Journal journal;
+    if (journal.open(kAofPath)) {
+        engine.replay(journal);
+        engine.attach(journal);
+    }
+    else {
+        std::cerr << "engine: persistence disabled (" << kAofPath << ")\n";
+    }
 
     // argv 单条命令
     if (argc > 1) {
