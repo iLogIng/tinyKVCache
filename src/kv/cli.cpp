@@ -25,6 +25,7 @@ std::vector<std::string> tokenize(const std::string& line)
             // 进入引号模式
             if (quote_char == 0) {
                 quote_char = ch;
+                started = true;   // 保空 token: `""` 也要作为一个参数
             }
             // 退出引号模式
             else if (quote_char == ch) {
@@ -66,9 +67,9 @@ ParseError parse(const std::vector<std::string>& tokens, Command& out)
 
     // 查找命令
     const CommandSpec* spec = nullptr;
-    for (size_t i = 0; kSpecs[i].name.size() > 0; ++i) {
-        if (kSpecs[i].name == tokens[0]) {
-            spec = &kSpecs[i];
+    for (const auto& k : commands()) {
+        if (k.name == tokens[0]) {
+            spec = &k;
             break;
         }
     }
@@ -92,9 +93,9 @@ ParseError parse(const std::vector<std::string>& tokens, Command& out)
 std::string_view usage_of(std::string_view name)
 {
     // 遍历查找
-    for (size_t i = 0; kSpecs[i].name.size() > 0; ++i) {
-        if (kSpecs[i].name == name) {
-            return kSpecs[i].usage;
+    for (const auto& k : commands()) {
+        if (k.name == name) {
+            return k.usage;
         }
     }
     return {};

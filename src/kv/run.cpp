@@ -9,8 +9,6 @@
 
 namespace {
 
-using kv::kSpecs;
-
 // 会话默认缓存容量
 constexpr std::size_t kDefaultCapacity = 64;
 
@@ -18,8 +16,8 @@ constexpr std::size_t kDefaultCapacity = 64;
 void print_commands()
 {
     std::cerr << "commands:\n";
-    for (size_t i = 0; kSpecs[i].name.size() > 0; ++i) {
-        std::cerr << "    " << kSpecs[i].usage << '\n';
+    for (const auto& k : kv::commands()) {
+        std::cerr << "    " << k.usage << '\n';
     }
     std::cerr << '\n';
 }
@@ -32,7 +30,8 @@ int main(int argc, char* argv[])
 
     // argv 单条命令
     if (argc > 1) {
-        return kv::exec(engine, std::vector<std::string>(argv + 1, argv + argc));
+        return kv::exec(engine, std::vector<std::string>(argv + 1, argv + argc),
+                        std::cout, std::cerr);
     }
 
     // 进入 stdin 先进行命令提示
@@ -41,7 +40,7 @@ int main(int argc, char* argv[])
     std::string line;
     bool has_error = false;
     while (std::getline(std::cin, line)) {
-        if (kv::exec(engine, kv::tokenize(line)) != 0) {
+        if (kv::exec(engine, kv::tokenize(line), std::cout, std::cerr) != 0) {
             has_error = true;
         }
     }
