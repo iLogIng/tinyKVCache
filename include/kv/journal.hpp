@@ -8,8 +8,15 @@
 
 namespace kv {
 
-enum class Op { Put, Del, Clear };
-enum class Fsync { Always, Os };
+enum class Op : uint8_t
+{
+    Put, Del, Clear
+};
+
+enum class Fsync
+{
+    Always, Os
+};
 
 struct Record {
     Op op;
@@ -17,7 +24,8 @@ struct Record {
     std::string value;
 };
 
-// 缓存文件管理模块: 追加操作记录, 不依赖 Engine
+// 缓存文件管理模块
+// 追加操作记录
 class Journal {
 public:
     Journal() = default;
@@ -25,7 +33,7 @@ public:
     Journal& operator=(const Journal&) = delete;
     ~Journal() { close(); }
 
-    // 打开(必要时创建)日志文件; fsync 策略按次或交给系统
+    // (创建)打开日志文件; 按 fsync 策略执行
     bool open(const std::string& path, Fsync fsync = Fsync::Always);
 
     void close();

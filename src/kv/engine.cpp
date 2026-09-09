@@ -8,7 +8,7 @@
 namespace kv {
 
 namespace {
-// 日志追加失败的兜底提示
+// 日志追加失败的提示
 void warn_journal_fail()
 {
     std::cerr << "engine: journal append failed\n";
@@ -184,17 +184,18 @@ bool Engine::replay(Journal& journal)
 {
     Journal* saved = journal_;
     journal_ = nullptr;  // 回放期间不把重建过程再写回日志
-    const bool ok = journal.replay([this](const Record& r) {
-        switch (r.op) {
-            case Op::Put:
-                put(r.key, r.value);
-                break;
-            case Op::Del:
-                erase(r.key);
-                break;
-            case Op::Clear:
-                clear();
-                break;
+    const bool ok = journal.replay(
+        [this](const Record& r) {
+            switch (r.op) {
+                case Op::Put:
+                    put(r.key, r.value);
+                    break;
+                case Op::Del:
+                    erase(r.key);
+                    break;
+                case Op::Clear:
+                    clear();
+                    break;
         }
     });
     journal_ = saved;

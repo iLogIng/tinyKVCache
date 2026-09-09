@@ -35,9 +35,10 @@ bool get_le32(const std::string& s, std::size_t off, uint32_t& out)
 
 bool Journal::open(const std::string& path, Fsync fsync)
 {
+    // 创建时，仅由创建用户可读可写
     fd_ = ::open(path.c_str(), O_RDWR | O_CREAT, 0600);
     if (fd_ < 0) {
-        std::cerr << "journal: open " << path << ": " << std::strerror(errno) << '\n';
+        std::cerr << "journal: open '" << path << "': " << std::strerror(errno) << '\n';
         return false;
     }
     path_ = path;
@@ -59,6 +60,7 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
         return false;
     }
     std::string rec;
+    // 1B 4B key-str 4B value-str
     rec.reserve(1 + 4 + key.size() + 4 + value.size());
     rec.push_back(static_cast<char>(op));
     put_le32(rec, static_cast<uint32_t>(key.size()));
@@ -69,7 +71,8 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
     if (::lseek(fd_, 0, SEEK_END) < 0) {
         return false;
     }
-    std::size_t done = 0;
+    std::size_t done = 0; // 检测写入是否完成
+    // 从缓冲写入文件
     while (done < rec.size()) {
         const ssize_t n = ::write(fd_, rec.data() + done, rec.size() - done);
         if (n > 0) {
@@ -88,6 +91,7 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
     return true;
 }
 
+// 响应记录
 bool Journal::replay(const std::function<void(const Record&)>& on_record)
 {
     if (fd_ < 0) {
@@ -96,11 +100,15 @@ bool Journal::replay(const std::function<void(const Record&)>& on_record)
     if (::lseek(fd_, 0, SEEK_SET) < 0) {
         return false;
     }
+    // 数据
     std::string data;
+    // 缓存
     char buf[8192];
     for (;;) {
+        // 读取缓存
         const ssize_t n = ::read(fd_, buf, sizeof(buf));
         if (n > 0) {
+            // 将缓存写入数据
             data.append(buf, static_cast<std::size_t>(n));
         }
         else if (n == 0) {
@@ -128,7 +136,7 @@ bool Journal::replay(const std::function<void(const Record&)>& on_record)
         if (!get_le32(data, off + 1, klen)) {
             break;
         }
-        // 布局: [kind][klen][key][vlen][value]
+        // 布局: [op kind][klen][key][vlen][value]
         const std::size_t vlen_off = off + 1 + 4 + klen;
         if (vlen_off + 4 > data.size()) {
             break;  // key 数据不完整
@@ -137,10 +145,12 @@ bool Journal::replay(const std::function<void(const Record&)>& on_record)
         if (!get_le32(data, vlen_off, vlen)) {
             break;
         }
+        // 记录后的末尾
         const std::size_t rec_end = vlen_off + 4 + vlen;
         if (rec_end > data.size()) {
             break;  // 尾部记录不完整
         }
+        // 记录结构
         Record r;
         r.op = op;
         r.key.assign(data, off + 5, klen);
