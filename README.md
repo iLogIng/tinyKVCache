@@ -59,6 +59,15 @@ printf 'put a 1\nget a\n' | ./build/KVCacheClient
 - 响应：若干文本行 + 一个空行作为帧尾；错误文本进响应帧
 - 连接 keep-alive；`exit/quit` 触发断开（服务端不执行）；EOF 即断开
 
+## 持久化
+
+- 写操作（put/del/clr）由 Engine 钩子先追加到操作日志再改内存（Engine 只持 `Journal*`，文件管理在独立 `Journal` 模块）
+- 记录为领域无关的 Op（二进制长度前缀，值可含任意字节）
+- 启动时回放历史写序列重建缓存，随后继续追加
+- 语义：**写驱动回放**，LRU 只按写序重建，不还原被读取影响的淘汰次序
+- 路径：CLI 默认 `kv.aof`；server `KVCacheServer <port> [capacity] [aof]`
+- 尾部不完整记录自动截断；日志会持续增长，压缩（数据文件快照 + 截断）为后续项
+
 ## COMMAND 命令
 
 | 命令 | 说明 |
@@ -100,12 +109,14 @@ struct Slot {
 include/kv/
   engine.hpp   kv::Engine：有界 LRU 缓存（cache/catalog/frstk）
   cli.hpp      Command/tokenize/CommandSpec + commands() 命令表视图
-  regcmd.hpp   kv::exec(…, out, err)：查表执行入口
+  regcmd.hpp   kv::exec(…, out)：查表执行入口
+  journal.hpp  持久化模块：操作日志(Op)的读/写/回放
   net.hpp      网络小工具：read_line / send_all / recv_frame
 src/kv/
   engine.cpp   槽位池 + 侵入链 LRU 实现
   cli.cpp      分词/解析实现
   regcmd.cpp   命令 handler、命令表定义、commands()、分发
+  journal.cpp  日志记录编解码 + 文件 IO + 坏尾截断
   run.cpp      KVCache main：argv / stdin
   server.cpp   KVCacheServer main：select 多连接
   client.cpp   KVCacheClient main：请求-响应
@@ -113,12 +124,13 @@ src/kv/
 tests/
   test_engine.cpp  LRU 语义用例
   test_cli.cpp     tokenize/parse/exec 用例
+  test_journal.cpp 日志编解码/坏尾/引擎钩子/写驱动回放
 ```
 
 命令表是单一真相源：`regcmd.cpp` 的 `CommandSpec kSpecs[]`，由 `kv::commands()` 以范围视图暴露（无空名哨兵，全部消费方 range-for）。加/改命令只需改 regcmd.cpp（表加一行 + 定义 handler），cli/net 层零改动。坏命令仅报错不退出进程。
 
 ## NEXT
 
-- M3：AOF 追加日志持久化 + 启动回放
 - v0.1 发布：GitHub + CI（gcc/clang + ctest）+ benchmark
+- M3.5（待定）：AOF 压缩 → 数据文件快照 + 截断日志
 - 后续评估：TTL、类型系统、RESP 完整协议
