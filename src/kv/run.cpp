@@ -30,13 +30,8 @@ int main(int argc, char* argv[])
 
     // argv 单条命令
     if (argc > 1) {
-        if (auto err = kv::exec(engine,
-                                std::vector<std::string>(argv + 1, argv + argc),
-                                std::cout)) {
-            std::cerr << *err;
-            return 2;
-        }
-        return 0;
+        return kv::exec(engine, std::vector<std::string>(argv + 1, argv + argc),
+                        std::cout);
     }
 
     // 进入 stdin 先进行命令提示
@@ -45,8 +40,7 @@ int main(int argc, char* argv[])
     std::string line;
     bool has_error = false;
     while (std::getline(std::cin, line)) {
-        if (auto err = kv::exec(engine, kv::tokenize(line), std::cout)) {
-            std::cerr << *err;
+        if (kv::exec(engine, kv::tokenize(line), std::cout) != 0) {
             has_error = true;
         }
     }
