@@ -4,11 +4,15 @@
 #include "kv/regcmd.hpp"
 
 #include <arpa/inet.h>
+#include <algorithm>
+#include <cerrno>
 #include <cstdlib>
+#include <fcntl.h>
 #include <iostream>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
@@ -18,9 +22,23 @@ namespace {
 using kv::Engine;
 using kv::kDefaultPort;
 
+void set_nonblock(int fd)
+{
+    const int flags = ::fcntl(fd, F_GETFL, 0);
+    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+struct Conn
+{
+    int fd;
+    std::string in;    // 未成行的读缓冲
+    std::string out;   // 待发送缓冲
+    bool gone = false;
+};
+
 struct Reply
 {
-    std::string body;  // 已含各输出行与空行帧尾
+    std::string body;  // 已含空行帧尾
     bool close = false;
 };
 
@@ -41,18 +59,73 @@ Reply run_request(Engine& engine, const std::vector<std::string>& tokens)
     return reply;
 }
 
-// 顺序处理一个连接的所有请求(逐行), 直到 EOF 或 exit/quit
-void serve_conn(Engine& engine, int fd)
+// 有可读事件: 读入缓冲并按 \n 切出请求逐条执行
+void on_readable(Engine& engine, Conn& c)
 {
-    std::string line;
-    while (kv::read_line(fd, line)) {
-        const Reply reply = run_request(engine, kv::tokenize(line));
-        if (!reply.body.empty() && !kv::send_all(fd, reply.body)) {
-            break;
+    char buf[4096];
+    for (;;) {
+        const ssize_t n = ::recv(c.fd, buf, sizeof(buf), 0);
+        if (n > 0) {
+            c.in.append(buf, static_cast<std::size_t>(n));
+            for (;;) {
+                const std::size_t pos = c.in.find('\n');
+                if (pos == std::string::npos) {
+                    break;
+                }
+                std::string line = c.in.substr(0, pos);
+                c.in.erase(0, pos + 1);
+                if (line.size() > kv::kMaxLine) {
+                    c.gone = true;
+                    return;
+                }
+                const Reply r = run_request(engine, kv::tokenize(line));
+                if (!r.body.empty()) {
+                    c.out += r.body;
+                }
+                if (r.close) {
+                    c.gone = true;
+                    return;
+                }
+            }
+            if (c.in.size() > kv::kMaxLine) {
+                c.gone = true;
+            }
         }
-        if (reply.close) {
-            break;
+        else if (n == 0) {
+            c.gone = true;  // 对端关闭
+            return;
         }
+        else if (errno == EINTR) {
+            continue;
+        }
+        else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        }
+        else {
+            c.gone = true;
+            return;
+        }
+    }
+}
+
+// 有可写事件: 尽量发完 out 缓冲
+void on_writable(Conn& c)
+{
+    if (c.out.empty()) {
+        return;
+    }
+    const ssize_t n = ::send(c.fd, c.out.data(), c.out.size(), MSG_NOSIGNAL);
+    if (n > 0) {
+        c.out.erase(0, static_cast<std::size_t>(n));
+    }
+    else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        return;
+    }
+    else if (n < 0 && errno == EINTR) {
+        return;
+    }
+    else {
+        c.gone = true;
     }
 }
 
@@ -74,6 +147,7 @@ int main(int argc, char* argv[])
     }
     int reuse = 1;
     ::setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    set_nonblock(lfd);
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -94,13 +168,68 @@ int main(int argc, char* argv[])
               << " capacity=" << capacity << '\n';
 
     Engine engine(capacity);
+    std::vector<Conn> conns;
+
     for (;;) {
-        const int cfd = ::accept(lfd, nullptr, nullptr);
-        if (cfd < 0) {
-            std::cerr << "error: accept()\n";
-            continue;
+        fd_set rfds, wfds;
+        FD_ZERO(&rfds);
+        FD_ZERO(&wfds);
+        FD_SET(lfd, &rfds);
+        int maxfd = lfd;
+        for (const Conn& c : conns) {
+            FD_SET(c.fd, &rfds);
+            if (!c.out.empty()) {
+                FD_SET(c.fd, &wfds);
+            }
+            if (c.fd > maxfd) {
+                maxfd = c.fd;
+            }
         }
-        serve_conn(engine, cfd);
-        ::close(cfd);
+
+        if (::select(maxfd + 1, &rfds, &wfds, nullptr, nullptr) < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::cerr << "error: select()\n";
+            break;
+        }
+
+        // 新连接
+        if (FD_ISSET(lfd, &rfds)) {
+            for (;;) {
+                const int cfd = ::accept(lfd, nullptr, nullptr);
+                if (cfd < 0) {
+                    break;  // EAGAIN: 本轮接受完
+                }
+                set_nonblock(cfd);
+                conns.push_back(Conn{cfd, {}, {}, false});
+            }
+        }
+
+        // 读写事件
+        for (Conn& c : conns) {
+            if (c.gone) {
+                continue;
+            }
+            if (FD_ISSET(c.fd, &rfds)) {
+                on_readable(engine, c);
+            }
+            if (!c.gone && !c.out.empty() && FD_ISSET(c.fd, &wfds)) {
+                on_writable(c);
+            }
+        }
+
+        // 清理关闭的连接
+        conns.erase(std::remove_if(conns.begin(), conns.end(),
+                                   [](const Conn& c) {
+                                       if (c.gone) {
+                                           ::close(c.fd);
+                                       }
+                                       return c.gone;
+                                   }),
+                    conns.end());
     }
+
+    ::close(lfd);
+    return 0;
 }
