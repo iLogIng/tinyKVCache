@@ -34,7 +34,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // 逐行转发 stdin 请求, 打印响应(去空行帧尾)
+    // 逐行转发 stdin 请求, 打印响应
     std::string line, resp;
     while (std::getline(std::cin, line)) {
         if (line == "exit" || line == "quit") {

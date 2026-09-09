@@ -10,7 +10,7 @@
 
 using namespace kv;
 
-TEST_CASE("tokenize 边界: 空白/引号/转义/空 token/空行")
+TEST_CASE("tokenize 边界: 空白/引号/转义/空引号/空行")
 {
     REQUIRE(tokenize("put a b") == std::vector<std::string>({"put", "a", "b"}));
     REQUIRE(tokenize("put k \"hello world\"") ==
@@ -23,8 +23,8 @@ TEST_CASE("tokenize 边界: 空白/引号/转义/空 token/空行")
             std::vector<std::string>({"put", "k", "say \"hi\""}));
     REQUIRE(tokenize("put a\\ b c") ==
             std::vector<std::string>({"put", "a b", "c"}));
-    REQUIRE(tokenize("put k \"\"") ==
-            std::vector<std::string>({"put", "k", ""}));
+    REQUIRE(tokenize("put k \"\"") ==  // 空引号不产生 token
+            std::vector<std::string>({"put", "k"}));
     REQUIRE(tokenize("").empty());
     REQUIRE(tokenize("   \t ").empty());
     REQUIRE(tokenize("put\tk\tv") ==

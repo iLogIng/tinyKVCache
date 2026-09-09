@@ -49,11 +49,8 @@ void cmd_lst(Engine& e, const Command&, std::ostream& out)
 
 void cmd_help(Engine&, const Command&, std::ostream& out);
 
-/**
- * 命令表
- * 语法, 行为
- * 数量由 commands() 视图提供, 无需哨兵
-*/
+// 命令表
+// 语法, 行为
 const CommandSpec kSpecs[] = {
     { "put",  2, 2, "put <key> <value>", cmd_put },
     { "get",  1, 1, "get <key>",         cmd_get },
@@ -63,7 +60,7 @@ const CommandSpec kSpecs[] = {
     { "help", 0, 0, "help",              cmd_help },
 };
 
-// 命令表视图(表界仅在定义处可知)
+// 命令表视图
 CommandView commands()
 {
     return { kSpecs, std::size(kSpecs) };

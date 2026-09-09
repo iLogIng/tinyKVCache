@@ -25,7 +25,6 @@ std::vector<std::string> tokenize(const std::string& line)
             // 进入引号模式
             if (quote_char == 0) {
                 quote_char = ch;
-                started = true;   // 保空 token: `""` 也要作为一个参数
             }
             // 退出引号模式
             else if (quote_char == ch) {
