@@ -58,7 +58,7 @@ Reply run_request(Engine& engine, const std::vector<std::string>& tokens)
         return reply;
     }
     std::ostringstream out;
-    kv::exec(engine, tokens, out);   // 错误已在 exec 内部打印到 std::cerr
+    kv::exec(engine, tokens, out);
     // 响应体: 内容行以 \n 收尾, 再添加 \n 作空行帧尾;
     // 空体(静默成功/出错) -> 单个空行
     std::string body = out.str();
