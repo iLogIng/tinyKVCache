@@ -4,58 +4,6 @@
 
 namespace kv {
 
-#if 0
-// "cmdop" "key" "value" 解析器
-std::vector<std::string> tokenize(const std::string& line)
-{
-    std::vector<std::string> out;
-    std::string cur;
-    bool in_quote = false;
-    bool started = false;
-
-    // 脱去 命令、参数 两边的 单、双引号
-    for (size_t i = 0; i < line.size(); ++i) {
-        const char ch = line[i];
-        // 引号内部
-        if (in_quote) {
-            // 引号结束
-            if (ch == '"') {
-                in_quote = false;
-            }
-            else if (ch == '\\' && i + 1 < line.size()) { // 转译
-                cur.push_back(line[++i]);
-            }
-            else {
-                cur.push_back(ch);
-            }
-        }
-        else if (ch == '"') { // 引号开始
-            in_quote = true;
-            started = true;
-        }
-        else if (ch == ' ' || ch == '\t') { // 开始新的 key "value"
-            // 将解析的 key/value 追加为命令参数
-            if (started) {
-                out.push_back(std::move(cur));
-                cur.clear();
-                started = false;
-            }
-        }
-        else if (ch == '\\' && i + 1 < line.size()) { // 转译
-            cur.push_back(line[++i]);
-            started = true;
-        }
-        else {
-            cur.push_back(ch);
-            started = true;
-        }
-    }
-    if (started) {
-        out.push_back(std::move(cur));
-    }
-    return out;
-}
-#else
 // "cmdop" "key" "value" 解析器
 std::vector<std::string> tokenize(const std::string& line)
 {
@@ -107,9 +55,9 @@ std::vector<std::string> tokenize(const std::string& line)
     }
     return out;
 }
-#endif
 
 // 解析
+// token: cmdop argv...
 ParseError parse(const std::vector<std::string>& tokens, Command& out)
 {
     if (tokens.empty()) {
@@ -134,6 +82,7 @@ ParseError parse(const std::vector<std::string>& tokens, Command& out)
         return ParseError::WrongArgCount;
     }
 
+    // 传出
     out.name = spec->name;
     out.args.assign(tokens.begin() + 1, tokens.end());
     return ParseError::Ok;

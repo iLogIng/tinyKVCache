@@ -97,6 +97,7 @@ int exec(Engine& engine, const std::vector<std::string>& tokens)
                       << "  usage: " << usage_of(tokens[0]) << '\n';
             return 2;
     }
+    // 命令有效
 
     for (const auto& k : kSpecs) {
         if (k.name == cmd.name) {

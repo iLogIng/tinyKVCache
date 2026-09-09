@@ -51,6 +51,11 @@ printf 'put a 1\nput b 2\nget a\nlst\n' | ./build/KVCache
 输入按空白分词，双引号内可含空格/逗号，`\"` 转义。
 解析/参数错误输出到 stderr 并返回退出码 2，其余返回 0。
 
+cmd => include/kv/run.cpp  
+    kv::exec(kv::engine, kv::tokenize(*stdin input line*))  
+        kv::parse() -> *parsed cmd with args*  
+        k.handler(kv::engine, *cmd with args*)
+
 ## LRU 机制
 
 **布局**（数组式侵入链，下标代替指针，`-1` 为空）：
