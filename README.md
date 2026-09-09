@@ -103,6 +103,16 @@ tests/
 增/改命令只需改动 `regcmd.cpp:kv::kSpace`（表加一行 + 定义 handler），无 cli 层改动。
 空行跳过，坏命令仅报错不退出进程。
 
+## 持久化
+
+**记录格式**  
+**|4Byte|key-string|4Byte|value-string|**
+
+文件限制:  
+大小: <= 128MB , 新数据进入前检查剩余大小  
+
+**原子化**  
+
 ## NEXT
 
 - M3：AOF 追加日志持久化 + 启动回放
