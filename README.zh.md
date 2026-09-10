@@ -16,7 +16,12 @@ cmake -B build
 cmake --build build
 ```
 
-产物：`KVCache-LocalCli`、`KVCache-RemoteCli`、`KVCache-Client`、`KVCache-Server`、`kv_tests`
+产物：
+- `KVCache-LocalCli`    本地cli
+- `KVCache-RemoteCli`   远程cli
+- `KVCache-Client`      客户端
+- `KVCache-Server`      服务端
+- `kv_tests`            测试
 
 ### TEST 测试
 
@@ -35,7 +40,7 @@ printf 'put a 1\nput b 2\nget a\nlst\n' | ./build/KVCache-LocalCli
 ```
 
 - 参数：`KVCache-LocalCli <command> [args...]`
-- 无 argv 时进入 stdin 会话：先打印命令列表，逐行执行，空行跳过；退出靠 EOF（Ctrl-D）
+- 无 argv 时进入 stdin 会话：先打印命令列表，逐行执行，空行跳过；C-D EOF 退出
 - 本地固定 `kv.aof`、fsync `always`；会话默认容量 64
 
 #### REMOTE CLI 远程 CLI
@@ -135,6 +140,7 @@ struct Slot {
 ```
 请求帧: [1B ver=1][4B body_len][body]
         body = [1B cmdargs][1B cmd_len][cmd][arg_i: 4B len + bytes] * cmdargs
+
 响应帧: [1B ver=1][4B body_len][body]
         body = 结果文本字节 (长度 0 = 无输出)
 ```
@@ -142,7 +148,9 @@ struct Slot {
 - 参数原样字节、无转义、空值可表达；`cmdargs` 为命令参数个数（不含命令名）
 - `body_len ≤ 1MB`；`cmd_len == 0` 非法；版本不匹配则关闭连接
 
-## PERSIST 持久化（Journal 设计）
+## PERSIST 持久化
+
+> 由 `kv::Journal` 管理
 
 - **模块边界**：`Engine` 只持有 `Journal*`；文件 IO、记录编解码、回放都在独立 `Journal` 模块
 - **记录格式**：`[1B op][4B klen][key][4B vlen][value]`，长度前缀，值可含任意字节
@@ -150,9 +158,9 @@ struct Slot {
 - **回放**：启动时逐条读取并回调重建缓存；写驱动语义，LRU 只按写序重建
 - **坏尾**：末尾不完整记录自动截断恢复
 - **fsync 策略**：
-  - `always` 每次追加立即落盘（ACK=已落盘，延迟最高）
-  - `group` 合并一批写：`dirty` 标记 + `last_fsync` 时间 + 写计数，超过 `--fsync-interval` 统一一次 fsync，响应按 `pending_sync` 门控放行（ACK=已落盘）
-  - `os` 交给系统回写（吞吐高，ACK 不保证掉电安全）
+  - `always` 每次追加立即落盘
+  - `group` 合并一批写：`dirty` 标记 + `last_fsync` 时间 + 写计数，超过 `--fsync-interval` 统一 fsync，响应按 `pending_sync` 放行
+  - `os` 交给系统回写
   - fsync 失败：关闭待落盘连接，不返回假 ACK
 
 ## STRUCT 结构
