@@ -83,7 +83,11 @@ client.recv_batch(2, out);
 - 记录为领域无关的 Op（二进制长度前缀，值可含任意字节）
 - 启动时回放历史写序列重建缓存，随后继续追加
 - 语义：**写驱动回放**，LRU 只按写序重建，不还原被读取影响的淘汰次序
-- 参数：`KVCache-Server --port <n> [--bind <ip>] [--capacity <n>] [--aof <path>] [--fsync always|os]`；本地 CLI 固定 `kv.aof`、`always`
+- 参数：`KVCache-Server --port <n> [--bind <ip>] [--capacity <n>] [--aof <path>] [--fsync always|group|os] [--fsync-interval <ms>]`；本地 CLI 固定 `kv.aof`、`always`
+- fsync 策略：
+  - `always` 每次追加立即落盘（ACK=已落盘，延迟最高）
+  - `group` 合并一批写，距上次刷盘超过 `--fsync-interval`（默认 1ms）后统一 fsync 再回包（ACK=已落盘；fsync 期间短暂阻塞事件循环）
+  - `os` 交给系统回写（吞吐高，ACK 不保证掉电安全）
 - 尾部不完整记录自动截断；日志会持续增长，压缩（数据文件快照 + 截断）为后续项
 
 ## COMMAND 命令

@@ -18,6 +18,7 @@ struct ServerConfig {
     std::size_t capacity = 64;
     std::string aof_path = "kv.aof";
     Fsync fsync = Fsync::Always;
+    int fsync_interval_ms = 1;          // group 模式的刷盘间隔(毫秒)
 };
 
 struct ClientConfig {
@@ -29,7 +30,8 @@ static inline void print_server_usage()
 {
     std::cerr << "KVCache-Server"
                  " --port <n> [--bind <ip>] [--capacity <n>]"
-                 " [--aof <path>] [--fsync always|os]\n";
+                 " [--aof <path>] [--fsync always|group|os]"
+                 " [--fsync-interval <ms>]\n";
 }
 
 // 解析结果: 0 成功, 1 出错(通过 err 返回), 2 已打印用法
@@ -88,11 +90,26 @@ static inline int parse_server_args(int argc, char** argv, ServerConfig& cfg,
             if (val == "always") {
                 cfg.fsync = Fsync::Always;
             }
+            else if (val == "group") {
+                cfg.fsync = Fsync::Group;
+            }
             else if (val == "os") {
                 cfg.fsync = Fsync::Os;
             }
             else {
-                err = "fsync must be always|os";
+                err = "fsync must be always|group|os";
+                return 1;
+            }
+            ++i;
+        }
+        else if (opt == "--fsync-interval") {
+            if (!has_next) {
+                err = "missing value for --fsync-interval";
+                return 1;
+            }
+            cfg.fsync_interval_ms = static_cast<int>(std::strtol(val.c_str(), nullptr, 10));
+            if (cfg.fsync_interval_ms < 0) {
+                err = "fsync-interval must be >= 0";
                 return 1;
             }
             ++i;

@@ -44,6 +44,7 @@ bool Journal::open(const std::string& path, Fsync fsync_policy)
     }
     path_ = path;
     fsync_policy_ = fsync_policy;
+    last_fsync_ = std::chrono::steady_clock::now();
     return true;
 }
 
@@ -80,13 +81,55 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
             continue;
         }
         else {
+            ++write_fail_count_;
             return false;
         }
     }
-    if (fsync_policy_ == Fsync::Always && ::fsync(fd_) < 0) {
+    ++write_count_;
+    if (fsync_policy_ == Fsync::Always) {
+        if (::fsync(fd_) < 0) {
+            ++write_fail_count_;
+            return false;
+        }
+    }
+    else if (fsync_policy_ == Fsync::Group) {
+        dirty_ = true;
+    }
+    return true;
+}
+
+bool Journal::sync()
+{
+    if (!dirty_) {
+        return true;
+    }
+    dirty_ = false;
+    last_fsync_ = std::chrono::steady_clock::now();
+    if (fd_ < 0 || ::fsync(fd_) < 0) {
         return false;
     }
     return true;
+}
+
+bool Journal::dirty_or_interval_sync(
+    std::chrono::milliseconds interval,
+    std::chrono::steady_clock::time_point now) const
+{
+    return dirty_ && (now - last_fsync_ >= interval);
+}
+
+std::chrono::milliseconds Journal::time_until_sync(
+    std::chrono::milliseconds interval,
+    std::chrono::steady_clock::time_point now) const
+{
+    if (!dirty_) {
+        return std::chrono::milliseconds(-1);
+    }
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fsync_);
+    if (elapsed >= interval) {
+        return std::chrono::milliseconds(0);
+    }
+    return interval - elapsed;
 }
 
 // 使用on_record响应重建记录

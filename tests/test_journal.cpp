@@ -1,6 +1,7 @@
 #include "kv/engine.hpp"
 #include "kv/journal.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -148,4 +149,48 @@ TEST_CASE("engine 覆盖与淘汰不额外记日志; 容量一致时写驱动回
         REQUIRE(e2.size() == 3);
         REQUIRE(e2.get("d") != std::nullopt);
     }
+}
+
+TEST_CASE("journal group 模式: append 不刷盘, sync 落盘, 间隔判定")
+{
+    TempFile f;
+    {
+        Journal j;
+        REQUIRE(j.open(f.path, Fsync::Group));
+        REQUIRE(j.append(Op::Put, "a", "1"));
+        REQUIRE(j.append(Op::Put, "b", "2"));
+        REQUIRE(j.write_count() == 2);
+        REQUIRE(j.write_fail_count() == 0);
+
+        // 未 sync 时同进程内重开也能读到(page cache)
+        Journal j2;
+        REQUIRE(j2.open(f.path));
+        std::vector<Record> got;
+        REQUIRE(j2.replay([&](const Record& r) { got.push_back(r); }));
+        REQUIRE(got.size() == 2);
+    }
+    {
+        Journal j;
+        REQUIRE(j.open(f.path, Fsync::Group));
+        const auto t0 = std::chrono::steady_clock::now();
+        REQUIRE(j.append(Op::Put, "c", "3"));
+        // 未到间隔不刷
+        REQUIRE_FALSE(j.dirty_or_interval_sync(std::chrono::milliseconds(1000), t0));
+        // 间隔为 0 视为已到点
+        REQUIRE(j.dirty_or_interval_sync(std::chrono::milliseconds(0), t0));
+        REQUIRE(j.time_until_sync(std::chrono::milliseconds(1000), t0) >
+                std::chrono::milliseconds(0));
+        REQUIRE(j.sync());
+        // 刷盘后不再需要同步
+        REQUIRE_FALSE(j.dirty_or_interval_sync(std::chrono::milliseconds(0), t0));
+    }
+}
+
+TEST_CASE("journal write_fail_count 初始为 0")
+{
+    TempFile f;
+    Journal j;
+    REQUIRE(j.open(f.path));
+    REQUIRE(j.write_fail_count() == 0);
+    REQUIRE(j.write_count() == 0);
 }

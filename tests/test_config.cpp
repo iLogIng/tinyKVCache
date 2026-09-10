@@ -87,6 +87,33 @@ TEST_CASE("server --help 打印用法")
     REQUIRE(parse_server_args(static_cast<int>(argv.size()), argv.data(), cfg, err) == 2);
 }
 
+TEST_CASE("server group 模式与刷盘间隔")
+{
+    {
+        std::vector<std::string> args = {"prog", "--fsync", "group", "--fsync-interval", "5"};
+        std::vector<char*> argv = argv_of(args);
+        ServerConfig cfg;
+        std::string err;
+        REQUIRE(parse_server_args(static_cast<int>(argv.size()), argv.data(), cfg, err) == 0);
+        REQUIRE(cfg.fsync == Fsync::Group);
+        REQUIRE(cfg.fsync_interval_ms == 5);
+    }
+    {
+        std::vector<std::string> args = {"prog", "--fsync", "bad"};
+        std::vector<char*> argv = argv_of(args);
+        ServerConfig cfg;
+        std::string err;
+        REQUIRE(parse_server_args(static_cast<int>(argv.size()), argv.data(), cfg, err) == 1);
+    }
+    {
+        std::vector<std::string> args = {"prog", "--fsync-interval", "-1"};
+        std::vector<char*> argv = argv_of(args);
+        ServerConfig cfg;
+        std::string err;
+        REQUIRE(parse_server_args(static_cast<int>(argv.size()), argv.data(), cfg, err) == 1);
+    }
+}
+
 TEST_CASE("client 参数解析与命令位置")
 {
     ClientConfig cfg;

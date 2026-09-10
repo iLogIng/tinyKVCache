@@ -32,6 +32,7 @@ void Engine::put(const std::string& key, const std::string& value)
 {
     if (journal_ != nullptr && !journal_->append(Op::Put, key, value)) {
         warn_journal_fail();
+        return;  // 记日志失败则不修改内存
     }
     auto it = catalog.find(key);
     // 已存在: 覆盖并刷新为最近使用
@@ -87,6 +88,7 @@ bool Engine::erase(const std::string& key)
     }
     if (journal_ != nullptr && !journal_->append(Op::Del, key, "")) {
         warn_journal_fail();
+        return false;  // 记日志失败则不修改内存
     }
     int idx = it->second;
     unlink(idx);
@@ -101,6 +103,7 @@ void Engine::clear() noexcept
 {
     if (journal_ != nullptr && !journal_->append(Op::Clear, "", "")) {
         warn_journal_fail();
+        return;  // 记日志失败则不修改内存
     }
     catalog.clear();
     for (Slot& s : cache) {
@@ -184,7 +187,8 @@ void Engine::detach() noexcept
 bool Engine::replay(Journal& journal)
 {
     Journal* saved = journal_;
-    journal_ = nullptr;  // 回放期间不把重建过程再写回日志
+    // 回放期间不需要将重建过程再写回
+    journal_ = nullptr;
     const bool ok = journal.replay(
         [this](const Record& r) {
             switch (r.op) {

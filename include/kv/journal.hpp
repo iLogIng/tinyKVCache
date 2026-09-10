@@ -1,6 +1,7 @@
 #ifndef KV_JOURNAL_HPP
 #define KV_JOURNAL_HPP
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -15,7 +16,7 @@ enum class Op : uint8_t
 
 enum class Fsync
 {
-    Always, Os
+    Always, Group, Os
 };
 
 struct Record {
@@ -44,12 +45,32 @@ public:
     // 顺序读取全部记录并逐条回调; 尾部不完整记录截断恢复
     bool replay(const std::function<void(const Record&)>& on_record);
 
+    // 立即刷盘(仅当有未刷数据)
+    bool sync();
+
+    // 是否需要刷盘: 有未刷数据且距上次刷盘已超过 interval
+    bool dirty_or_interval_sync(
+        std::chrono::milliseconds interval,
+        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) const;
+
+    // 距下次刷盘剩余时间; 无未刷数据返回 -1ms, 已到点返回 0ms
+    std::chrono::milliseconds time_until_sync(
+        std::chrono::milliseconds interval,
+        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) const;
+
+    std::uint64_t write_count() const { return write_count_; }
+    std::uint64_t write_fail_count() const { return write_fail_count_; }
+
     const std::string& path() const { return path_; }
 
 private:
     int fd_ = -1;
     std::string path_;
     Fsync fsync_policy_ = Fsync::Always;
+    bool dirty_ = false;
+    std::uint64_t write_count_ = 0;
+    std::uint64_t write_fail_count_ = 0;
+    std::chrono::steady_clock::time_point last_fsync_;
 };
 
 }  // namespace kv

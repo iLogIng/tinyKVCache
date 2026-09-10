@@ -5,6 +5,7 @@
 
 #include <arpa/inet.h>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -57,7 +58,7 @@ bool Server::setup()
         lfd_ = -1;
         return false;
     }
-    // 开始监听, 接受队列用系统上限
+    // 开始监听, 接受队列采用系统上限
     if (::listen(lfd_, SOMAXCONN) < 0) {
         std::cerr << "error: listen()\n";
         ::close(lfd_);
@@ -86,19 +87,42 @@ bool Server::setup()
     return true;
 }
 
-// 按发送缓冲增删 EPOLLOUT
+// 按发送缓冲增删 EPOLLOUT; 有待落盘写响应时不发
 void Server::update_events(Conn& c)
 {
     epoll_event ev{};
     ev.events = EPOLLIN | EPOLLRDHUP;
-    if (!c.out.empty()) {
+    // 输出缓冲非空且无待落盘响应
+    if (!c.out.empty() && !c.pending_sync) {
         ev.events |= EPOLLOUT;
     }
     ev.data.fd = c.fd;
     if (::epoll_ctl(epfd_, EPOLL_CTL_MOD, c.fd, &ev) < 0) {
-        std::cerr << "server: epoll_ctl(MOD) fd " << c.fd << ": "
+        std::cerr << "server: epoll_ctl(MOD) fd '" << c.fd << "': "
                   << std::strerror(errno) << '\n';
         c.gone = true;
+    }
+}
+
+// 刷盘后放行待发送响应; 失败则关闭待落盘连接
+void Server::sync_and_release()
+{
+    if (!journal_.sync()) {
+        std::cerr << "server: fsync failed, closing pending connections\n";
+        for (auto& [fd, c] : conns_) {
+            if (c.pending_sync) {
+                c.gone = true;
+            }
+        }
+        return;
+    }
+    for (auto& [fd, c] : conns_) {
+        if (c.pending_sync) {
+            c.pending_sync = false;
+            if (!c.gone) {
+                update_events(c);
+            }
+        }
     }
 }
 
@@ -133,7 +157,7 @@ void Server::on_readable(Conn& c)
                 std::string_view body;
                 const FrameStatus st = next_frame(c.in, c.in_off, body);
                 if (st == FrameStatus::Incomplete) {
-                    break;  // 帧不完整, 等更多数据
+                    break;  // 帧不完整, 等待数据
                 }
                 if (st == FrameStatus::Invalid) {
                     c.gone = true;
@@ -150,6 +174,8 @@ void Server::on_readable(Conn& c)
                 tokens.push_back(std::move(cmd));
                 tokens.insert(tokens.end(), args.begin(), args.end());
 
+                const std::uint64_t before_w = journal_.write_count();
+                const std::uint64_t before_f = journal_.write_fail_count();
                 const Reply r = run_request(tokens);
                 if (r.close) {
                     c.gone = true;
@@ -159,12 +185,23 @@ void Server::on_readable(Conn& c)
                     c.gone = true;
                     return;
                 }
+                if (journal_.write_fail_count() != before_f) {
+                    c.gone = true;  // 记日志失败, 关闭连接
+                    return;
+                }
+                if (journal_.write_count() != before_w) {
+                    if (config_.fsync == Fsync::Group) {
+                        c.pending_sync = true;  // group 模式: 写响应等待落盘
+                    }
+                }
+                update_events(c);  // 按待落盘状态决定是否放行
             }
-            // 回收已消费前缀: 全消费直接清空, 否则本轮最多一次移位
+            // 缓冲全消费后清空
             if (c.in_off == c.in.size()) {
                 c.in.clear();
                 c.in_off = 0;
             }
+            // 擦除已消费缓冲
             else if (c.in_off > 0) {
                 c.in.erase(0, c.in_off);
                 c.in_off = 0;
@@ -234,15 +271,23 @@ bool Server::run()
         std::cerr << "engine: persistence disabled (" << config_.aof_path << ")\n";
     }
 
+    const std::chrono::milliseconds interval(config_.fsync_interval_ms);
     epoll_event events[kMaxEvents];
     for (;;) {
-        const int n = ::epoll_wait(epfd_, events, kMaxEvents, -1);
+        const auto now = std::chrono::steady_clock::now();
+        const auto wait = journal_.time_until_sync(interval, now);
+        const int timeout = wait.count() < 0 ? -1 : static_cast<int>(wait.count());
+        const int n = ::epoll_wait(epfd_, events, kMaxEvents, timeout);
         if (n < 0) {
             if (errno == EINTR) {
                 continue;
             }
             std::cerr << "error: epoll_wait()\n";
             break;
+        }
+        if (n == 0) {
+            sync_and_release();  // 到达刷盘间隔
+            continue;
         }
 
         for (int i = 0; i < n; ++i) {
@@ -266,7 +311,7 @@ bool Server::run()
                         ::close(cfd);
                         continue;
                     }
-                    conns_.emplace(cfd, Conn{cfd, {}, {}, false});
+                    conns_.emplace(cfd, Conn{cfd, {}, {}, 0, false, false});
                 }
                 continue;
             }
@@ -285,6 +330,11 @@ bool Server::run()
             if (!c.gone && (ev & EPOLLOUT)) {
                 on_writable(c);
             }
+        }
+
+        // 到达刷盘间隔则提交本批写
+        if (journal_.dirty_or_interval_sync(interval)) {
+            sync_and_release();
         }
 
         // 清理关闭的连接

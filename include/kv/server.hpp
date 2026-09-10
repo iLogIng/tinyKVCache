@@ -24,31 +24,33 @@ private:
     // 连接
     struct Conn {
         int fd;
-        std::string in;     // 未成行的读缓冲
-        std::string out;    // 待发送缓冲
-        std::size_t in_off = 0;  // 读缓冲已消费前缀
-        bool gone = false;  // 可发送？
+        std::string in;             // 未成行的读缓冲
+        std::string out;            // 待发送缓冲
+        std::size_t in_off = 0;     // 读缓冲已消费前缀
+        bool pending_sync = false;  // 有写响应等待落盘
+        bool gone = false;          // 可发送？
     };
     // 响应
     struct Reply {
         std::string body;   // 响应体
-        bool close = false; // 断开
+        bool close = false; // 断开连接
     };
 
     static void set_nonblock(int fd);
     bool setup();
     void update_events(Conn& c);  // 按发送缓冲增删 EPOLLOUT
+    void sync_and_release();      // 刷盘后放行待发送响应
     Reply run_request(const std::vector<std::string>& tokens);
     void on_readable(Conn& c);
     void on_writable(Conn& c);
 
-    static constexpr int kMaxEvents = 64;  // epoll_wait 单次事件上限
-    ServerConfig config_;       // 配置
-    int lfd_ = -1;              // 监听文件描述符
-    int epfd_ = -1;             // epoll 实例
-    Engine engine_;             // kv引擎
-    Journal journal_;           // 回放日志
-    std::unordered_map<int, Conn> conns_;  // 连接
+    static constexpr int kMaxEvents = 64;   // epoll_wait 单次事件上限
+    ServerConfig config_;                   // 配置
+    int lfd_ = -1;                          // 监听文件描述符
+    int epfd_ = -1;                         // epoll 实例
+    Engine engine_;                         // kv引擎
+    Journal journal_;                       // 回放日志
+    std::unordered_map<int, Conn> conns_;   // 连接
 };
 
 }  // namespace kv
