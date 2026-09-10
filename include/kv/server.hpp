@@ -12,7 +12,8 @@
 
 namespace kv {
 
-// 网络服务: 单线程多连接, 监听并执行请求
+// 网络服务
+// 单线程多连接, 监听并执行请求
 class Server {
 public:
     explicit Server(ServerConfig config);
@@ -21,15 +22,17 @@ public:
     bool run();
 
 private:
+    // 连接
     struct Conn {
         int fd;
-        std::string in;   // 接收缓冲
-        std::string out;  // 发送缓冲
-        bool gone = false;
+        std::string in;    // 未成行的读缓冲
+        std::string out;   // 待发送缓冲
+        bool gone = false; // 可发送？
     };
+    // 响应
     struct Reply {
-        std::string body;   // 响应帧内容
-        bool close = false; // 是否断开
+        std::string body;   // 已含空行帧尾
+        bool close = false; // 断开
     };
 
     static void set_nonblock(int fd);
