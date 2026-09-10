@@ -34,7 +34,7 @@ public:
     ~Journal() { close(); }
 
     // (创建)打开日志文件; 按 fsync 策略执行
-    bool open(const std::string& path, Fsync fsync = Fsync::Always);
+    bool open(const std::string& path, Fsync fsync_policy = Fsync::Always);
 
     void close();
 
@@ -49,7 +49,7 @@ public:
 private:
     int fd_ = -1;
     std::string path_;
-    Fsync fsync_ = Fsync::Always;
+    Fsync fsync_policy_ = Fsync::Always;
 };
 
 }  // namespace kv
