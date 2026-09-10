@@ -48,12 +48,14 @@ public:
     // 立即刷盘(仅当有未刷数据)
     bool sync();
 
-    // 是否需要刷盘: 有未刷数据且距上次刷盘已超过 interval
+    // 是否需要刷盘
+    // 有未刷数据且距上次刷盘已超过 interval
     bool dirty_or_interval_sync(
         std::chrono::milliseconds interval,
         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) const;
 
-    // 距下次刷盘剩余时间; 无未刷数据返回 -1ms, 已到点返回 0ms
+    // 距下次刷盘剩余时间
+    // 无未刷数据返回 -1ms, 已到点返回 0ms
     std::chrono::milliseconds time_until_sync(
         std::chrono::milliseconds interval,
         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now()) const;
@@ -64,13 +66,13 @@ public:
     const std::string& path() const { return path_; }
 
 private:
-    int fd_ = -1;
-    std::string path_;
-    Fsync fsync_policy_ = Fsync::Always;
-    bool dirty_ = false;
-    std::uint64_t write_count_ = 0;
-    std::uint64_t write_fail_count_ = 0;
-    std::chrono::steady_clock::time_point last_fsync_;
+    int fd_ = -1;       // aof文件描述符
+    std::string path_;  // aof文件路径
+    Fsync fsync_policy_ = Fsync::Always;        // fsync策略
+    bool dirty_ = false;                        // 是否同步?
+    std::uint64_t write_count_ = 0;             // 写计数
+    std::uint64_t write_fail_count_ = 0;        // 写失败记录
+    std::chrono::steady_clock::time_point last_fsync_;  // 最近同步时间
 };
 
 }  // namespace kv
