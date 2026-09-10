@@ -33,16 +33,17 @@ bool get_le32(const std::string& s, std::size_t off, uint32_t& out)
 
 }  // namespace
 
-bool Journal::open(const std::string& path, Fsync fsync)
+bool Journal::open(const std::string& path, Fsync fsync_policy)
 {
     // 创建时，仅由创建用户可读可写
-    fd_ = ::open(path.c_str(), O_RDWR | O_CREAT, 0600);
+    // O_APPEND: 每次写入原子定位到文件尾
+    fd_ = ::open(path.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
     if (fd_ < 0) {
         std::cerr << "journal: open '" << path << "': " << std::strerror(errno) << '\n';
         return false;
     }
     path_ = path;
-    fsync_ = fsync;
+    fsync_policy_ = fsync_policy;
     return true;
 }
 
@@ -68,9 +69,6 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
     put_le32(rec, static_cast<uint32_t>(value.size()));
     rec.append(value.data(), value.size());
 
-    if (::lseek(fd_, 0, SEEK_END) < 0) {
-        return false;
-    }
     std::size_t done = 0; // 检测写入是否完成
     // 从缓冲写入文件
     while (done < rec.size()) {
@@ -85,7 +83,7 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
             return false;
         }
     }
-    if (fsync_ == Fsync::Always && ::fsync(fd_) < 0) {
+    if (fsync_policy_ == Fsync::Always && ::fsync(fd_) < 0) {
         return false;
     }
     return true;

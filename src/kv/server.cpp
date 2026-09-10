@@ -157,8 +157,8 @@ void on_writable(Conn& c)
 
 int main(int argc, char* argv[])
 {
-    if (argc < 2 || argc > 4) {
-        std::cerr << "<port> [<capacity>] [<aof>]\n";
+    if (argc < 2 || argc > 5) {
+        std::cerr << "<port> [<capacity>] [<aof>] [<always|os>]\n";
         return 1;
     }
     const unsigned short port = static_cast<unsigned short>(
@@ -167,6 +167,17 @@ int main(int argc, char* argv[])
         ? static_cast<std::size_t>(std::strtoull(argv[2], nullptr, 10))
         : 64;
     const char* aof_path = argc > 3 ? argv[3] : "kv.aof";
+    kv::Fsync fsync_policy = kv::Fsync::Always;
+    if (argc > 4) {
+        const std::string policy = argv[4];
+        if (policy == "os") {
+            fsync_policy = kv::Fsync::Os;
+        }
+        else if (policy != "always") {
+            std::cerr << "<port> [<capacity>] [<aof>] [<always|os>]\n";
+            return 1;
+        }
+    }
 
     // 建立连接
     const int lfd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -201,7 +212,7 @@ int main(int argc, char* argv[])
 
     // 持久化: 回放历史写序列后挂接日志
     kv::Journal journal;
-    if (journal.open(aof_path)) {
+    if (journal.open(aof_path, fsync_policy)) {
         engine.replay(journal);
         engine.attach(journal);
     }

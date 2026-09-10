@@ -43,7 +43,7 @@ printf 'put a 1\nput b 2\nget a\nlst\n' | ./build/KVCache
 启动服务（默认 127.0.0.1:7379，容量 64；可用参数改端口与容量）：
 
 ```sh
-./build/KVCacheServer            # 或 KVCacheServer 17379 8
+./build/KVCacheServer            # 或 KVCacheServer 17379 8 kv.aof always
 ```
 
 客户端连接（逐行发 stdin 的命令，打印响应）：
@@ -65,7 +65,8 @@ printf 'put a 1\nget a\n' | ./build/KVCacheClient
 - 记录为领域无关的 Op（二进制长度前缀，值可含任意字节）
 - 启动时回放历史写序列重建缓存，随后继续追加
 - 语义：**写驱动回放**，LRU 只按写序重建，不还原被读取影响的淘汰次序
-- 路径：CLI 默认 `kv.aof`；server `KVCacheServer <port> [capacity] [aof]`
+- 路径：CLI 默认 `kv.aof`；server `KVCacheServer <port> [capacity] [aof] [always|os]`
+- fsync 策略：`always` 每次追加落盘，`os` 交给系统；CLI 固定 `always`
 - 尾部不完整记录自动截断；日志会持续增长，压缩（数据文件快照 + 截断）为后续项
 
 ## COMMAND 命令
