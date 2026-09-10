@@ -66,6 +66,7 @@ private:
     std::vector<int> frstk;     // 空闲槽栈
     int head_ = -1;  // 链端点 MRU
     int tail_ = -1;  // 链端点 LRU
+    // 重放日志，在engine的既有命令方法中直接记录
     Journal* journal_ = nullptr;
 };
 
