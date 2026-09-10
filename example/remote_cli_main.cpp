@@ -1,12 +1,27 @@
 #include "kv/cli.hpp"
+#include "kv/client.hpp"
 #include "kv/net.hpp"
 
-#include <arpa/inet.h>
 #include <iostream>
 #include <string>
-#include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
+
+namespace {
+
+// 用户输入行 -> 请求; 空行返回 false, exit/quit 由调用方判断
+bool to_request(const std::string& line, kv::Request& request)
+{
+    std::vector<std::string> tokens = kv::tokenize(line);
+    if (tokens.empty()) {
+        return false;
+    }
+    request.cmd = tokens[0];
+    request.args.assign(tokens.begin() + 1, tokens.end());
+    return true;
+}
+
+}  // namespace
 
 int main(int argc, char* argv[])
 {
@@ -14,49 +29,60 @@ int main(int argc, char* argv[])
         ? static_cast<unsigned short>(std::strtoul(argv[1], nullptr, 10))
         : kv::kDefaultPort;
 
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-        std::cerr << "error: socket()\n";
-        return 1;
-    }
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(port);
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+    kv::Client client;
+    if (!client.connect("127.0.0.1", port)) {
         std::cerr << "error: connect(" << port << ")\n";
-        ::close(fd);
         return 1;
     }
 
-    // 逐行解析用户输入, 编码为帧发送并打印响应
+    // 非 tty: 整批发送后统一收响应(流水线)
+    if (!::isatty(STDIN_FILENO)) {
+        std::vector<kv::Request> requests;
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            kv::Request request;
+            if (!to_request(line, request)) {
+                continue;
+            }
+            if (request.cmd == "exit" || request.cmd == "quit") {
+                break;
+            }
+            requests.push_back(std::move(request));
+        }
+        if (requests.empty()) {
+            return 0;
+        }
+        if (!client.send_batch(requests)) {
+            std::cerr << "error: send failed\n";
+            return 1;
+        }
+        std::vector<std::string> out;
+        if (!client.recv_batch(requests.size(), out)) {
+            std::cerr << "error: recv failed\n";
+            return 1;
+        }
+        for (const std::string& payload : out) {
+            std::cout << payload;
+        }
+        return 0;
+    }
+
+    // tty: 逐条发送并打印
     std::string line;
     while (std::getline(std::cin, line)) {
-        std::vector<std::string> tokens = kv::tokenize(line);
-        if (tokens.empty()) {
+        kv::Request request;
+        if (!to_request(line, request)) {
             continue;
         }
-        if (tokens[0] == "exit" || tokens[0] == "quit") {
-            break;
-        }
-        const std::string cmd = tokens[0];
-        const std::vector<std::string> args(tokens.begin() + 1, tokens.end());
-        const std::string body = kv::encode_request(cmd, args);
-        if (body.empty()) {
-            std::cerr << "error: invalid command\n";
-            continue;
-        }
-        if (!kv::write_frame(fd, body)) {
+        if (request.cmd == "exit" || request.cmd == "quit") {
             break;
         }
         std::string payload;
-        if (!kv::read_frame(fd, payload)) {
+        if (!client.request(request, payload)) {
             break;
         }
         std::cout << payload;
         std::cout.flush();
     }
-
-    ::close(fd);
     return 0;
 }
