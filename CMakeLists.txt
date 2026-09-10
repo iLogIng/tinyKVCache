@@ -50,8 +50,9 @@ add_executable(kv_tests
     tests/test_engine.cpp
     tests/test_cli.cpp
     tests/test_journal.cpp
+    tests/test_net.cpp
 )
-target_link_libraries(kv_tests PRIVATE kvcache_core Catch2::Catch2WithMain)
+target_link_libraries(kv_tests PRIVATE kvcache_core kvcache_net Catch2::Catch2WithMain)
 target_compile_options(kv_tests PRIVATE -Wall -Wextra)
 
 add_test(NAME kv_tests COMMAND kv_tests)
