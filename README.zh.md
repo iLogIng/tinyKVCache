@@ -1,7 +1,11 @@
 # tinyKVCache
 
-> A tiny, zero-dependency in-memory key-value cache in C++17.
-> Bounded LRU eviction, AOF persistence, and a minimal CLI / client-server.
+> 这是一个基于 C++17 的零依赖简单内存键值缓存项目
+> 包含：
+> - 有界的 LRU 缓存淘汰机制
+> - local cli | remote cli | server | client 包装
+> - 网络服务/客户端封装
+> - 服务端 AOF 缓存文件回放重建
 
 ## START 快速开始
 
@@ -182,3 +186,4 @@ tests/
   test_net.cpp     帧编解码
   test_client.cpp  客户端与假服务端集成
 ```
+
