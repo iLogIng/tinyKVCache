@@ -25,13 +25,13 @@ private:
     // 连接
     struct Conn {
         int fd;
-        std::string in;    // 未成行的读缓冲
-        std::string out;   // 待发送缓冲
-        bool gone = false; // 可发送？
+        std::string in;     // 未成行的读缓冲
+        std::string out;    // 待发送缓冲
+        bool gone = false;  // 可发送？
     };
     // 响应
     struct Reply {
-        std::string body;   // 已含空行帧尾
+        std::string body;   // 响应体
         bool close = false; // 断开
     };
 
@@ -41,11 +41,11 @@ private:
     void on_readable(Conn& c);
     void on_writable(Conn& c);
 
-    ServerConfig config_;
-    int lfd_ = -1;
-    Engine engine_;
-    Journal journal_;
-    std::vector<Conn> conns_;
+    ServerConfig config_;       // 配置
+    int lfd_ = -1;              // 监听文件描述符
+    Engine engine_;             // kv引擎
+    Journal journal_;           // 回放日志
+    std::vector<Conn> conns_;   // 连接
 };
 
 }  // namespace kv
