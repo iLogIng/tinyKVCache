@@ -1,6 +1,6 @@
 #include "kv/cli.hpp"
 #include "kv/client.hpp"
-#include "kv/net.hpp"
+#include "kv/config.hpp"
 
 #include <iostream>
 #include <string>
@@ -9,7 +9,8 @@
 
 namespace {
 
-// 用户输入行 -> 请求; 空行返回 false, exit/quit 由调用方判断
+// 用户输入行 -> 请求;
+// 空行返回 false, exit/quit 由调用方判断
 bool to_request(const std::string& line, kv::Request& request)
 {
     std::vector<std::string> tokens = kv::tokenize(line);
@@ -25,13 +26,22 @@ bool to_request(const std::string& line, kv::Request& request)
 
 int main(int argc, char* argv[])
 {
-    const unsigned short port = argc > 1
-        ? static_cast<unsigned short>(std::strtoul(argv[1], nullptr, 10))
-        : kv::kDefaultPort;
+    kv::ClientConfig config;
+    std::string err;
+    int first_pos = 0;
+    const int rc = kv::parse_client_args(argc, argv, config, first_pos, err);
+    if (rc == 2) {
+        return 0;
+    }
+    if (rc == 1) {
+        std::cerr << "error: " << err << '\n';
+        kv::print_client_usage();
+        return 1;
+    }
 
     kv::Client client;
-    if (!client.connect("127.0.0.1", port)) {
-        std::cerr << "error: connect(" << port << ")\n";
+    if (!client.connect(config.host, config.port)) {
+        std::cerr << "error: connect(" << config.host << ':' << config.port << ")\n";
         return 1;
     }
 

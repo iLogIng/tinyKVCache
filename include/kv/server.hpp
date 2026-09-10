@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "kv/config.hpp"
 #include "kv/engine.hpp"
 #include "kv/journal.hpp"
 
@@ -14,8 +15,7 @@ namespace kv {
 // 网络服务: 单线程多连接, 监听并执行请求
 class Server {
 public:
-    Server(std::uint16_t port, std::size_t capacity, std::string aof_path,
-           Fsync fsync);
+    explicit Server(ServerConfig config);
 
     // 建立监听并进入事件循环
     bool run();
@@ -38,10 +38,7 @@ private:
     void on_readable(Conn& c);
     void on_writable(Conn& c);
 
-    std::uint16_t port_;
-    std::size_t capacity_;
-    std::string aof_path_;
-    Fsync fsync_;
+    ServerConfig config_;
     int lfd_ = -1;
     Engine engine_;
     Journal journal_;

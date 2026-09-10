@@ -48,25 +48,6 @@ void cmd_lst(Engine& e, const Command&, std::ostream& out)
     }
 }
 
-void cmd_help(Engine&, const Command&, std::ostream& out);
-
-// 命令表
-// 语法, 行为
-const CommandSpec kSpecs[] = {
-    { "put",  2, 2, "put <key> <value>", cmd_put },
-    { "get",  1, 1, "get <key>",         cmd_get },
-    { "del",  1, 1, "del <key>",         cmd_del },
-    { "clr",  0, 0, "clr",               cmd_clr },
-    { "lst",  0, 0, "lst",               cmd_lst },
-    { "help", 0, 0, "help",              cmd_help },
-};
-
-// 命令表视图
-CommandView commands()
-{
-    return { kSpecs, std::size(kSpecs) };
-}
-
 void cmd_help(Engine&, const Command&, std::ostream& out)
 {
     for (const auto& k : commands()) {
@@ -75,7 +56,8 @@ void cmd_help(Engine&, const Command&, std::ostream& out)
 }
 
 // 查表校验并执行。空 tokens 跳过。
-// 成功: 结果写 out 返回 0; 失败: 错误打印 std::cerr 并返回 2。
+// 成功: 结果写 out 返回 0;
+// 失败: 错误打印 std::cerr 并返回 2。
 int exec(Engine& engine, const std::vector<std::string>& tokens,
          std::ostream& out)
 {
@@ -104,6 +86,23 @@ int exec(Engine& engine, const std::vector<std::string>& tokens,
     }
     std::cerr << "error: unknown command '" << tokens[0] << "'\n";
     return 2;
+}
+
+// 命令表
+// 语法, 行为
+const CommandSpec kSpecs[] = {
+    { "put",  2, 2, "put <key> <value>", cmd_put },
+    { "get",  1, 1, "get <key>",         cmd_get },
+    { "del",  1, 1, "del <key>",         cmd_del },
+    { "clr",  0, 0, "clr",               cmd_clr },
+    { "lst",  0, 0, "lst",               cmd_lst },
+    { "help", 0, 0, "help",              cmd_help },
+};
+
+// 命令表视图
+CommandView commands()
+{
+    return { kSpecs, std::size(kSpecs) };
 }
 
 }  // namespace kv

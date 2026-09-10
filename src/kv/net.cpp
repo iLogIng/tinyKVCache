@@ -16,7 +16,8 @@ void put_le32(std::string& s, std::uint32_t v)
     s.push_back(static_cast<char>((v >> 24) & 0xff));
 }
 
-// 小端读 u32, 越界返回 false
+// 小端读 u32
+// 越界 return false
 bool get_le32(std::string_view s, std::size_t off, std::uint32_t& out)
 {
     if (off + 4 > s.size()) {
@@ -29,7 +30,7 @@ bool get_le32(std::string_view s, std::size_t off, std::uint32_t& out)
     return true;
 }
 
-// 读满 n 字节
+// 读 n 字节
 bool read_exact(int fd, char* buf, std::size_t n)
 {
     std::size_t got = 0;
@@ -53,9 +54,11 @@ bool read_exact(int fd, char* buf, std::size_t n)
 
 }  // namespace
 
+// 发送数据
 bool send_all(int fd, const std::string& data)
 {
     std::size_t sent = 0;
+    // 连续发送 data.size() 字节的数据
     while (sent < data.size()) {
         const ssize_t n = ::send(fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
         if (n > 0) {
@@ -155,12 +158,14 @@ bool write_frame(int fd, std::string_view body)
 bool read_frame(int fd, std::string& body)
 {
     std::uint8_t ver = 0;
+    // 1B version
     if (!read_exact(fd, reinterpret_cast<char*>(&ver), 1)) {
         return false;
     }
     if (ver != kProtocolVersion) {
         return false;
     }
+    // 4B body len
     char len_buf[4];
     if (!read_exact(fd, len_buf, 4)) {
         return false;

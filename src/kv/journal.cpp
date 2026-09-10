@@ -61,7 +61,7 @@ bool Journal::append(Op op, std::string_view key, std::string_view value)
         return false;
     }
     std::string rec;
-    // 1B 4B key-str 4B value-str
+    // 1B cmdop 4B key-str 4B value-str
     rec.reserve(1 + 4 + key.size() + 4 + value.size());
     rec.push_back(static_cast<char>(op));
     put_le32(rec, static_cast<uint32_t>(key.size()));

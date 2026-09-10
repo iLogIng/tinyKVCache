@@ -16,45 +16,51 @@
 #include <unistd.h>
 
 namespace kv {
-
-Server::Server(std::uint16_t port, std::size_t capacity, std::string aof_path,
-               Fsync fsync)
-    : port_(port)
-    , capacity_(capacity)
-    , aof_path_(std::move(aof_path))
-    , fsync_(fsync)
-    , engine_(capacity)
+Server::Server(ServerConfig config)
+    : config_(std::move(config))
+    , engine_(config_.capacity)
 {
 }
 
+// 设置文件非阻塞读写
 void Server::set_nonblock(int fd)
 {
     const int flags = ::fcntl(fd, F_GETFL, 0);
     ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
+// 服务器初始化
 bool Server::setup()
 {
+    // 创建套接字
     lfd_ = ::socket(AF_INET, SOCK_STREAM, 0);
     if (lfd_ < 0) {
         std::cerr << "error: socket()\n";
         return false;
     }
     int reuse = 1;
-    ::setsockopt(lfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-    set_nonblock(lfd_);
+    ::setsockopt(lfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)); // 地址复用
+    set_nonblock(lfd_); // 文件非阻塞读写
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(port_);
-    if (::bind(lfd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        std::cerr << "error: bind(" << port_ << ")\n";
+    addr.sin_port = htons(config_.port);
+    // 解析绑定地址
+    if (::inet_pton(AF_INET, config_.bind.c_str(), &addr.sin_addr) != 1) {
+        std::cerr << "error: invalid bind address: " << config_.bind << '\n';
         ::close(lfd_);
         lfd_ = -1;
         return false;
     }
-    if (::listen(lfd_, 16) < 0) {
+    // 地址绑定
+    if (::bind(lfd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+        std::cerr << "error: bind(" << config_.bind << ':' << config_.port << ")\n";
+        ::close(lfd_);
+        lfd_ = -1;
+        return false;
+    }
+    // 开始监听, 接受队列用系统上限
+    if (::listen(lfd_, SOMAXCONN) < 0) {
         std::cerr << "error: listen()\n";
         ::close(lfd_);
         lfd_ = -1;
@@ -63,7 +69,8 @@ bool Server::setup()
     return true;
 }
 
-// 一条请求 -> 响应; exit/quit 触发 close
+// 请求 -> 响应;
+// exit/quit 关闭连接
 Server::Reply Server::run_request(const std::vector<std::string>& tokens)
 {
     Reply reply;
@@ -151,7 +158,7 @@ void Server::on_readable(Conn& c)
     }
 }
 
-// 可写: 尽量发完 out 缓冲
+// 可写: 尽量发送 out 缓冲
 void Server::on_writable(Conn& c)
 {
     if (c.out.empty()) {
@@ -180,16 +187,16 @@ bool Server::run()
         return false;
     }
 
-    std::cout << "kv-server 127.0.0.1:" << port_
-              << " capacity=" << capacity_ << '\n';
+    std::cout << "kv-server " << config_.bind << ':' << config_.port
+              << " capacity=" << config_.capacity << '\n';
 
     // 持久化: 回放历史写序列后挂接日志
-    if (journal_.open(aof_path_, fsync_)) {
+    if (journal_.open(config_.aof_path, config_.fsync)) {
         engine_.replay(journal_);
         engine_.attach(journal_);
     }
     else {
-        std::cerr << "engine: persistence disabled (" << aof_path_ << ")\n";
+        std::cerr << "engine: persistence disabled (" << config_.aof_path << ")\n";
     }
 
     for (;;) {

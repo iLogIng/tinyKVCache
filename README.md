@@ -35,12 +35,13 @@ printf 'put a 1\nput b 2\nget a\nlst\n' | ./build/KVCache-LocalCli
 网络服务：
 
 ```sh
-./build/KVCache-Server 7379 64 kv.aof always
-printf 'put a 1\nget a\n' | ./build/KVCache-RemoteCli 7379
-./build/KVCache-Client 7379 get a
+./build/KVCache-Server --port 7379 --capacity 64 --aof kv.aof --fsync always
+printf 'put a 1\nget a\n' | ./build/KVCache-RemoteCli --port 7379
+./build/KVCache-Client --port 7379 get a
 ```
 
 `KVCache-RemoteCli` 把 stdin 的命令行解析后发送；非 tty 时整批发送再统一收响应。`KVCache-Client` 是客户端库的示例程序。
+客户端可用 `--host` 指定服务端地址。服务端 `--bind` 默认 `127.0.0.1`；绑 `0.0.0.0` 会暴露到网络且无认证，谨慎使用。
 
 ## PROTOCOL 协议
 
@@ -82,7 +83,7 @@ client.recv_batch(2, out);
 - 记录为领域无关的 Op（二进制长度前缀，值可含任意字节）
 - 启动时回放历史写序列重建缓存，随后继续追加
 - 语义：**写驱动回放**，LRU 只按写序重建，不还原被读取影响的淘汰次序
-- 参数：`KVCache-Server <port> [capacity] [aof] [always|os]`；本地 CLI 固定 `kv.aof`、`always`
+- 参数：`KVCache-Server --port <n> [--bind <ip>] [--capacity <n>] [--aof <path>] [--fsync always|os]`；本地 CLI 固定 `kv.aof`、`always`
 - 尾部不完整记录自动截断；日志会持续增长，压缩（数据文件快照 + 截断）为后续项
 
 ## COMMAND 命令

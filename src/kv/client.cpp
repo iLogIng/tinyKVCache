@@ -77,6 +77,7 @@ bool Client::is_open() const
     return fd_ >= 0;
 }
 
+// 发送请求帧
 bool Client::send(const Request& request)
 {
     if (fd_ < 0) {
@@ -89,6 +90,7 @@ bool Client::send(const Request& request)
     return write_frame(fd_, body);
 }
 
+// 接收响应帧
 bool Client::recv(std::string& payload)
 {
     if (fd_ < 0) {
