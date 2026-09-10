@@ -37,7 +37,7 @@ target_link_libraries(KVCache-LocalCli PRIVATE kvcache_core)
 target_compile_options(KVCache-LocalCli PRIVATE -Wall -Wextra)
 
 add_executable(KVCache-RemoteCli example/remote_cli_main.cpp)
-target_link_libraries(KVCache-RemoteCli PRIVATE kvcache_net)
+target_link_libraries(KVCache-RemoteCli PRIVATE kvcache_core kvcache_net)
 target_compile_options(KVCache-RemoteCli PRIVATE -Wall -Wextra)
 
 add_executable(KVCache-Server example/server_main.cpp)

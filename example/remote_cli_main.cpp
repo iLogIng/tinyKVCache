@@ -1,23 +1,18 @@
+#include "kv/cli.hpp"
 #include "kv/net.hpp"
 
 #include <arpa/inet.h>
-#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
-
-namespace {
-
-using kv::kDefaultPort;
-
-}  // namespace
+#include <vector>
 
 int main(int argc, char* argv[])
 {
     const unsigned short port = argc > 1
         ? static_cast<unsigned short>(std::strtoul(argv[1], nullptr, 10))
-        : kDefaultPort;
+        : kv::kDefaultPort;
 
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -34,22 +29,32 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // 逐行转发 stdin 请求, 打印响应
-    std::string line, resp;
+    // 逐行解析用户输入, 编码为帧发送并打印响应
+    std::string line;
     while (std::getline(std::cin, line)) {
-        if (line == "exit" || line == "quit") {
+        std::vector<std::string> tokens = kv::tokenize(line);
+        if (tokens.empty()) {
+            continue;
+        }
+        if (tokens[0] == "exit" || tokens[0] == "quit") {
             break;
         }
-        if (!kv::send_all(fd, line + "\n")) {
+        const std::string cmd = tokens[0];
+        const std::vector<std::string> args(tokens.begin() + 1, tokens.end());
+        const std::string body = kv::encode_request(cmd, args);
+        if (body.empty()) {
+            std::cerr << "error: invalid command\n";
+            continue;
+        }
+        if (!kv::write_frame(fd, body)) {
             break;
         }
-        if (kv::recv_frame(fd, resp)) {
-            std::cout << resp;
-            std::cout.flush();
-        }
-        else {
+        std::string payload;
+        if (!kv::read_frame(fd, payload)) {
             break;
         }
+        std::cout << payload;
+        std::cout.flush();
     }
 
     ::close(fd);

@@ -1,6 +1,5 @@
 #include "kv/server.hpp"
 
-#include "kv/cli.hpp"
 #include "kv/net.hpp"
 #include "kv/regcmd.hpp"
 
@@ -77,16 +76,11 @@ Server::Reply Server::run_request(const std::vector<std::string>& tokens)
     }
     std::ostringstream out;
     exec(engine_, tokens, out);
-    // 内容行以 \n 收尾, 再补一个空行作帧尾; 空体 -> 单个空行
-    std::string body = out.str();
-    if (!body.empty() && body.back() != '\n') {
-        body += '\n';
-    }
-    reply.body = std::move(body) + "\n";
+    reply.body = out.str();
     return reply;
 }
 
-// 可读: 读入缓冲并按 \n 切分请求逐条执行
+// 可读: 读入缓冲并按帧切分请求逐条执行
 void Server::on_readable(Conn& c)
 {
     char buf[4096];
@@ -95,27 +89,47 @@ void Server::on_readable(Conn& c)
         if (n > 0) {
             c.in.append(buf, static_cast<std::size_t>(n));
             for (;;) {
-                const std::size_t pos = c.in.find('\n');
-                if (pos == std::string::npos) {
-                    break;
+                if (c.in.size() < 5) {
+                    break;  // 帧头不完整
                 }
-                std::string line = c.in.substr(0, pos);
-                c.in.erase(0, pos + 1);
-                if (line.size() > kMaxLine) {
+                if (static_cast<std::uint8_t>(c.in[0]) != kProtocolVersion) {
                     c.gone = true;
                     return;
                 }
-                const Reply r = run_request(tokenize(line));
-                if (!r.body.empty()) {
-                    c.out += r.body;
-                }
-                if (r.close) {
+                std::uint32_t body_len = 0;
+                body_len = static_cast<std::uint8_t>(c.in[1])
+                    | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(c.in[2])) << 8)
+                    | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(c.in[3])) << 16)
+                    | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(c.in[4])) << 24);
+                if (body_len > kMaxFrame) {
                     c.gone = true;
                     return;
                 }
-            }
-            if (c.in.size() > kMaxLine) {
-                c.gone = true;
+                if (c.in.size() < 5 + body_len) {
+                    break;  // body 不完整
+                }
+                const std::string body = c.in.substr(5, body_len);
+                c.in.erase(0, 5 + body_len);
+
+                std::string cmd;
+                std::vector<std::string> args;
+                if (!decode_request(body, cmd, args)) {
+                    c.gone = true;
+                    return;
+                }
+                std::vector<std::string> tokens;
+                tokens.reserve(args.size() + 1);
+                tokens.push_back(std::move(cmd));
+                tokens.insert(tokens.end(), args.begin(), args.end());
+
+                const Reply r = run_request(tokens);
+                if (!r.close) {
+                    c.out += encode_frame(r.body);
+                }
+                else {
+                    c.gone = true;
+                    return;
+                }
             }
         }
         else if (n == 0) {

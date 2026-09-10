@@ -53,33 +53,6 @@ bool read_exact(int fd, char* buf, std::size_t n)
 
 }  // namespace
 
-bool read_line(int fd, std::string& out)
-{
-    out.clear();
-    char c;
-    for (;;) {
-        const ssize_t n = ::recv(fd, &c, 1, 0);
-        if (n == 1) {
-            if (c == '\n') {
-                return true;
-            }
-            out.push_back(c);
-            if (out.size() > kMaxLine) {
-                return false;
-            }
-        }
-        else if (n == 0) {
-            return false;  // EOF
-        }
-        else if (errno == EINTR) {
-            continue;
-        }
-        else {
-            return false;  // 出错
-        }
-    }
-}
-
 bool send_all(int fd, const std::string& data)
 {
     std::size_t sent = 0;
@@ -96,20 +69,6 @@ bool send_all(int fd, const std::string& data)
         }
     }
     return true;
-}
-
-bool recv_frame(int fd, std::string& out)
-{
-    out.clear();
-    std::string line;
-    while (read_line(fd, line)) {
-        if (line.empty()) {
-            return true;  // 空行帧尾
-        }
-        out += line;
-        out += '\n';
-    }
-    return false;
 }
 
 std::string encode_request(std::string_view cmd,
@@ -171,16 +130,25 @@ bool decode_request(std::string_view body, std::string& cmd,
     return true;
 }
 
-bool write_frame(int fd, std::string_view body)
+std::string encode_frame(std::string_view body)
 {
     if (body.size() > kMaxFrame) {
-        return false;
+        return {};
     }
     std::string frame;
     frame.reserve(5 + body.size());
     frame.push_back(static_cast<char>(kProtocolVersion));
     put_le32(frame, static_cast<std::uint32_t>(body.size()));
     frame.append(body.data(), body.size());
+    return frame;
+}
+
+bool write_frame(int fd, std::string_view body)
+{
+    const std::string frame = encode_frame(body);
+    if (frame.empty()) {
+        return false;
+    }
     return send_all(fd, frame);
 }
 
