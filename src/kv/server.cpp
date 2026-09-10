@@ -3,7 +3,6 @@
 #include "kv/net.hpp"
 #include "kv/regcmd.hpp"
 
-#include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
@@ -11,7 +10,7 @@
 #include <iostream>
 #include <ostream>
 #include <sstream>
-#include <sys/select.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -66,7 +65,42 @@ bool Server::setup()
         lfd_ = -1;
         return false;
     }
+    // 创建 epoll 实例并注册监听 fd
+    epfd_ = ::epoll_create1(EPOLL_CLOEXEC);
+    if (epfd_ < 0) {
+        std::cerr << "error: epoll_create1()\n";
+        ::close(lfd_);
+        lfd_ = -1;
+        return false;
+    }
+    epoll_event ev{};
+    ev.events = EPOLLIN;
+    ev.data.fd = lfd_;
+    if (::epoll_ctl(epfd_, EPOLL_CTL_ADD, lfd_, &ev) < 0) {
+        std::cerr << "error: epoll_ctl(ADD listen): " << std::strerror(errno) << '\n';
+        ::close(epfd_);
+        ::close(lfd_);
+        epfd_ = -1;
+        lfd_ = -1;
+        return false;
+    }
     return true;
+}
+
+// 按发送缓冲增删 EPOLLOUT
+void Server::update_events(Conn& c)
+{
+    epoll_event ev{};
+    ev.events = EPOLLIN | EPOLLRDHUP;
+    if (!c.out.empty()) {
+        ev.events |= EPOLLOUT;
+    }
+    ev.data.fd = c.fd;
+    if (::epoll_ctl(epfd_, EPOLL_CTL_MOD, c.fd, &ev) < 0) {
+        std::cerr << "server: epoll_ctl(MOD) fd " << c.fd << ": "
+                  << std::strerror(errno) << '\n';
+        c.gone = true;
+    }
 }
 
 // 请求 -> 响应;
@@ -147,6 +181,7 @@ void Server::on_readable(Conn& c)
             continue;
         }
         else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            update_events(c);
             return;
         }
         else {
@@ -167,6 +202,9 @@ void Server::on_writable(Conn& c)
     const ssize_t n = ::send(c.fd, c.out.data(), c.out.size(), MSG_NOSIGNAL);
     if (n > 0) {
         c.out.erase(0, static_cast<std::size_t>(n));
+        if (c.out.empty()) {
+            update_events(c);  // 发送完撤销 EPOLLOUT
+        }
     }
     else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return;
@@ -199,92 +237,75 @@ bool Server::run()
         std::cerr << "engine: persistence disabled (" << config_.aof_path << ")\n";
     }
 
+    epoll_event events[kMaxEvents];
     for (;;) {
-        // 先算最大 fd, 防止 FD_SET 越界
-        int maxfd = lfd_;
-        for (const Conn& c : conns_) {
-            if (c.fd > maxfd) {
-                maxfd = c.fd;
-            }
-        }
-        if (maxfd + 1 > FD_SETSIZE) {
-            std::cerr << "server: fd overflow, drop fd " << maxfd << '\n';
-            conns_.erase(
-                std::remove_if(conns_.begin(), conns_.end(),
-                    [maxfd](Conn& c) {
-                        if (c.fd == maxfd) {
-                            ::close(c.fd);
-                            return true;
-                        }
-                        return false;
-                    }),
-                conns_.end());
-            continue;
-        }
-
-        fd_set rfds, wfds;
-        FD_ZERO(&rfds);
-        FD_ZERO(&wfds);
-        FD_SET(lfd_, &rfds);
-        for (const Conn& c : conns_) {
-            FD_SET(c.fd, &rfds);
-            if (!c.out.empty()) {
-                FD_SET(c.fd, &wfds);
-            }
-        }
-
-        if (::select(maxfd + 1, &rfds, &wfds, nullptr, nullptr) < 0) {
+        const int n = ::epoll_wait(epfd_, events, kMaxEvents, -1);
+        if (n < 0) {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "error: select()\n";
+            std::cerr << "error: epoll_wait()\n";
             break;
         }
 
-        // 新连接
-        if (FD_ISSET(lfd_, &rfds)) {
-            for (;;) {
-                const int cfd = ::accept(lfd_, nullptr, nullptr);
-                if (cfd < 0) {
-                    break;  // EAGAIN: 本轮接受完
-                }
-                if (conns_.size() + 1 >= static_cast<std::size_t>(FD_SETSIZE) - 16) {
-                    std::cerr << "server: connection limit reached, reject fd "
-                              << cfd << '\n';
-                    ::close(cfd);
-                    continue;
-                }
-                set_nonblock(cfd);
-                conns_.push_back(Conn{cfd, {}, {}, false});
-            }
-        }
+        for (int i = 0; i < n; ++i) {
+            const int fd = events[i].data.fd;
+            const std::uint32_t ev = events[i].events;
 
-        // 读写事件
-        for (Conn& c : conns_) {
-            if (c.gone) {
+            // 监听 fd 上的新连接
+            if (fd == lfd_) {
+                for (;;) {
+                    const int cfd = ::accept(lfd_, nullptr, nullptr);
+                    if (cfd < 0) {
+                        break;  // EAGAIN: 本轮接受完
+                    }
+                    set_nonblock(cfd);
+                    epoll_event cev{};
+                    cev.events = EPOLLIN | EPOLLRDHUP;
+                    cev.data.fd = cfd;
+                    if (::epoll_ctl(epfd_, EPOLL_CTL_ADD, cfd, &cev) < 0) {
+                        std::cerr << "server: epoll_ctl(ADD) fd " << cfd << ": "
+                                  << std::strerror(errno) << '\n';
+                        ::close(cfd);
+                        continue;
+                    }
+                    conns_.emplace(cfd, Conn{cfd, {}, {}, false});
+                }
                 continue;
             }
-            if (FD_ISSET(c.fd, &rfds)) {
+
+            auto it = conns_.find(fd);
+            if (it == conns_.end()) {
+                continue;
+            }
+            Conn& c = it->second;
+            if (ev & (EPOLLERR | EPOLLHUP)) {
+                c.gone = true;
+            }
+            if (!c.gone && (ev & (EPOLLIN | EPOLLRDHUP))) {
                 on_readable(c);
             }
-            if (!c.gone && !c.out.empty() && FD_ISSET(c.fd, &wfds)) {
+            if (!c.gone && (ev & EPOLLOUT)) {
                 on_writable(c);
             }
         }
 
         // 清理关闭的连接
-        conns_.erase(
-            std::remove_if(conns_.begin(), conns_.end(),
-                [](const Conn& c) {
-                    if (c.gone) {
-                        ::close(c.fd);
-                    }
-                    return c.gone;
-                }),
-            conns_.end());
+        for (auto it = conns_.begin(); it != conns_.end();) {
+            if (it->second.gone) {
+                ::epoll_ctl(epfd_, EPOLL_CTL_DEL, it->first, nullptr);
+                ::close(it->first);
+                it = conns_.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
     }
 
+    ::close(epfd_);
     ::close(lfd_);
+    epfd_ = -1;
     lfd_ = -1;
     return true;
 }

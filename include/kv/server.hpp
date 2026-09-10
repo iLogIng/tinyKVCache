@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "kv/config.hpp"
@@ -37,15 +38,19 @@ private:
 
     static void set_nonblock(int fd);
     bool setup();
+    void update_events(Conn& c);  // 按发送缓冲增删 EPOLLOUT
     Reply run_request(const std::vector<std::string>& tokens);
     void on_readable(Conn& c);
     void on_writable(Conn& c);
 
+    static constexpr int kMaxEvents = 64;  // epoll_wait 单次事件上限
+
     ServerConfig config_;       // 配置
     int lfd_ = -1;              // 监听文件描述符
+    int epfd_ = -1;             // epoll 实例
     Engine engine_;             // kv引擎
     Journal journal_;           // 回放日志
-    std::vector<Conn> conns_;   // 连接
+    std::unordered_map<int, Conn> conns_;  // 连接
 };
 
 }  // namespace kv
