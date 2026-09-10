@@ -156,24 +156,31 @@ std::string encode_frame(std::string_view body)
 FrameStatus next_frame(std::string_view buf, std::size_t& off,
                        std::string_view& body)
 {
+    // 数据不足
     if (off > buf.size() || buf.size() - off < 5) {
         return FrameStatus::Incomplete;
     }
     const char* p = buf.data() + off;
+    // 协议版本不合法
     if (static_cast<std::uint8_t>(p[0]) != kProtocolVersion) {
         return FrameStatus::Invalid;
     }
+    // 帧长
     const std::uint32_t len = static_cast<std::uint8_t>(p[1])
         | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[2])) << 8)
         | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[3])) << 16)
         | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[4])) << 24);
+    // 超过最大帧长
     if (len > kMaxFrame) {
         return FrameStatus::Invalid;
     }
+    // 缓冲长度小于期待
     if (buf.size() - off < 5 + len) {
         return FrameStatus::Incomplete;
     }
+    // 帧
     body = std::string_view(p + 5, len);
+    // 更新偏移量
     off += 5 + len;
     return FrameStatus::Ok;
 }
