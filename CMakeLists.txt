@@ -18,6 +18,7 @@ target_include_directories(kvcache_core PUBLIC include)
 target_compile_options(kvcache_core PRIVATE -Wall -Wextra)
 
 add_library(kvcache_net STATIC
+    src/kv/client.cpp
     src/kv/net.cpp
 )
 
@@ -44,6 +45,10 @@ add_executable(KVCache-Server example/server_main.cpp)
 target_link_libraries(KVCache-Server PRIVATE kvcache_server)
 target_compile_options(KVCache-Server PRIVATE -Wall -Wextra)
 
+add_executable(KVCache-Client example/client_main.cpp)
+target_link_libraries(KVCache-Client PRIVATE kvcache_net)
+target_compile_options(KVCache-Client PRIVATE -Wall -Wextra)
+
 enable_testing()
 
 include(FetchContent)
@@ -59,8 +64,10 @@ add_executable(kv_tests
     tests/test_cli.cpp
     tests/test_journal.cpp
     tests/test_net.cpp
+    tests/test_client.cpp
 )
-target_link_libraries(kv_tests PRIVATE kvcache_core kvcache_net Catch2::Catch2WithMain)
+find_package(Threads REQUIRED)
+target_link_libraries(kv_tests PRIVATE kvcache_core kvcache_net Catch2::Catch2WithMain Threads::Threads)
 target_compile_options(kv_tests PRIVATE -Wall -Wextra)
 
 add_test(NAME kv_tests COMMAND kv_tests)
