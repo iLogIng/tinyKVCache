@@ -17,10 +17,6 @@ add_library(kvcache_core STATIC
 target_include_directories(kvcache_core PUBLIC include)
 target_compile_options(kvcache_core PRIVATE -Wall -Wextra)
 
-add_executable(KVCache src/kv/run.cpp)
-target_link_libraries(KVCache PRIVATE kvcache_core)
-target_compile_options(KVCache PRIVATE -Wall -Wextra)
-
 add_library(kvcache_net STATIC
     src/kv/net.cpp
 )
@@ -28,13 +24,25 @@ add_library(kvcache_net STATIC
 target_include_directories(kvcache_net PUBLIC include)
 target_compile_options(kvcache_net PRIVATE -Wall -Wextra)
 
-add_executable(KVCacheServer src/kv/server.cpp)
-target_link_libraries(KVCacheServer PRIVATE kvcache_core kvcache_net)
-target_compile_options(KVCacheServer PRIVATE -Wall -Wextra)
+add_library(kvcache_server STATIC
+    src/kv/server.cpp
+)
 
-add_executable(KVCacheClient src/kv/client.cpp)
-target_link_libraries(KVCacheClient PRIVATE kvcache_net)
-target_compile_options(KVCacheClient PRIVATE -Wall -Wextra)
+target_include_directories(kvcache_server PUBLIC include)
+target_link_libraries(kvcache_server PRIVATE kvcache_core kvcache_net)
+target_compile_options(kvcache_server PRIVATE -Wall -Wextra)
+
+add_executable(KVCache-LocalCli example/local_cli_main.cpp)
+target_link_libraries(KVCache-LocalCli PRIVATE kvcache_core)
+target_compile_options(KVCache-LocalCli PRIVATE -Wall -Wextra)
+
+add_executable(KVCache-RemoteCli example/remote_cli_main.cpp)
+target_link_libraries(KVCache-RemoteCli PRIVATE kvcache_net)
+target_compile_options(KVCache-RemoteCli PRIVATE -Wall -Wextra)
+
+add_executable(KVCache-Server example/server_main.cpp)
+target_link_libraries(KVCache-Server PRIVATE kvcache_server)
+target_compile_options(KVCache-Server PRIVATE -Wall -Wextra)
 
 enable_testing()
 
