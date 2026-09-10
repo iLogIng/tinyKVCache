@@ -107,10 +107,9 @@ bool Client::send_batch(const std::vector<Request>& requests)
     std::string buf;
     for (const Request& r : requests) {
         const std::string body = encode_request(r.cmd, r.args);
-        if (body.empty()) {
+        if (body.empty() || !append_frame(buf, body)) {
             return false;
         }
-        buf += encode_frame(body);
     }
     return send_all(fd_, buf);
 }

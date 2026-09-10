@@ -1,8 +1,6 @@
 #ifndef KV_SERVER_HPP
 #define KV_SERVER_HPP
 
-#include <cstddef>
-#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -28,6 +26,7 @@ private:
         int fd;
         std::string in;     // 未成行的读缓冲
         std::string out;    // 待发送缓冲
+        std::size_t in_off = 0;  // 读缓冲已消费前缀
         bool gone = false;  // 可发送？
     };
     // 响应
@@ -44,7 +43,6 @@ private:
     void on_writable(Conn& c);
 
     static constexpr int kMaxEvents = 64;  // epoll_wait 单次事件上限
-
     ServerConfig config_;       // 配置
     int lfd_ = -1;              // 监听文件描述符
     int epfd_ = -1;             // epoll 实例

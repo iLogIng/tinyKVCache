@@ -18,8 +18,7 @@ namespace kv {
 Server::Server(ServerConfig config)
     : config_(std::move(config))
     , engine_(config_.capacity)
-{
-}
+{ }
 
 // 设置文件非阻塞读写
 void Server::set_nonblock(int fd)
@@ -129,29 +128,17 @@ void Server::on_readable(Conn& c)
         const ssize_t n = ::recv(c.fd, buf, sizeof(buf), 0);
         if (n > 0) {
             c.in.append(buf, static_cast<std::size_t>(n));
+            // 用游标逐帧解析, 避免每帧拷贝与移位
             for (;;) {
-                if (c.in.size() < 5) {
-                    break;  // 帧头不完整
+                std::string_view body;
+                const FrameStatus st = next_frame(c.in, c.in_off, body);
+                if (st == FrameStatus::Incomplete) {
+                    break;  // 帧不完整, 等更多数据
                 }
-                if (static_cast<std::uint8_t>(c.in[0]) != kProtocolVersion) {
+                if (st == FrameStatus::Invalid) {
                     c.gone = true;
                     return;
                 }
-                std::uint32_t body_len = 0;
-                body_len = static_cast<std::uint8_t>(c.in[1])
-                    | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(c.in[2])) << 8)
-                    | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(c.in[3])) << 16)
-                    | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(c.in[4])) << 24);
-                if (body_len > kMaxFrame) {
-                    c.gone = true;
-                    return;
-                }
-                if (c.in.size() < 5 + body_len) {
-                    break;  // body 不完整
-                }
-                const std::string body = c.in.substr(5, body_len);
-                c.in.erase(0, 5 + body_len);
-
                 std::string cmd;
                 std::vector<std::string> args;
                 if (!decode_request(body, cmd, args)) {
@@ -164,13 +151,23 @@ void Server::on_readable(Conn& c)
                 tokens.insert(tokens.end(), args.begin(), args.end());
 
                 const Reply r = run_request(tokens);
-                if (!r.close) {
-                    c.out += encode_frame(r.body);
-                }
-                else {
+                if (r.close) {
                     c.gone = true;
                     return;
                 }
+                if (!append_frame(c.out, r.body)) {
+                    c.gone = true;
+                    return;
+                }
+            }
+            // 回收已消费前缀: 全消费直接清空, 否则本轮最多一次移位
+            if (c.in_off == c.in.size()) {
+                c.in.clear();
+                c.in_off = 0;
+            }
+            else if (c.in_off > 0) {
+                c.in.erase(0, c.in_off);
+                c.in_off = 0;
             }
         }
         else if (n == 0) {

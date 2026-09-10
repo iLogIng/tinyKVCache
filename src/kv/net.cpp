@@ -133,17 +133,49 @@ bool decode_request(std::string_view body, std::string& cmd,
     return true;
 }
 
-std::string encode_frame(std::string_view body)
+bool append_frame(std::string& out, std::string_view body)
 {
     if (body.size() > kMaxFrame) {
+        return false;
+    }
+    out.push_back(static_cast<char>(kProtocolVersion));
+    put_le32(out, static_cast<std::uint32_t>(body.size()));
+    out.append(body.data(), body.size());
+    return true;
+}
+
+std::string encode_frame(std::string_view body)
+{
+    std::string frame;
+    if (!append_frame(frame, body)) {
         return {};
     }
-    std::string frame;
-    frame.reserve(5 + body.size());
-    frame.push_back(static_cast<char>(kProtocolVersion));
-    put_le32(frame, static_cast<std::uint32_t>(body.size()));
-    frame.append(body.data(), body.size());
     return frame;
+}
+
+FrameStatus next_frame(std::string_view buf, std::size_t& off,
+                       std::string_view& body)
+{
+    if (off > buf.size() || buf.size() - off < 5) {
+        return FrameStatus::Incomplete;
+    }
+    const char* p = buf.data() + off;
+    if (static_cast<std::uint8_t>(p[0]) != kProtocolVersion) {
+        return FrameStatus::Invalid;
+    }
+    const std::uint32_t len = static_cast<std::uint8_t>(p[1])
+        | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[2])) << 8)
+        | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[3])) << 16)
+        | (static_cast<std::uint32_t>(static_cast<std::uint8_t>(p[4])) << 24);
+    if (len > kMaxFrame) {
+        return FrameStatus::Invalid;
+    }
+    if (buf.size() - off < 5 + len) {
+        return FrameStatus::Incomplete;
+    }
+    body = std::string_view(p + 5, len);
+    off += 5 + len;
+    return FrameStatus::Ok;
 }
 
 bool write_frame(int fd, std::string_view body)

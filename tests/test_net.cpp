@@ -99,3 +99,53 @@ TEST_CASE("net 帧读写与版本校验")
     ::close(fds[0]);
     ::close(fds[1]);
 }
+
+TEST_CASE("net append_frame 与 encode_frame 一致")
+{
+    const std::string body = "hello";
+    std::string out;
+    REQUIRE(append_frame(out, body));
+    REQUIRE(out == encode_frame(body));
+
+    // 超限 body
+    std::string big(kMaxFrame + 1, 'x');
+    std::string dst;
+    REQUIRE_FALSE(append_frame(dst, big));
+    REQUIRE(dst.empty());
+}
+
+TEST_CASE("net next_frame 游标解析")
+{
+    const std::string f1 = encode_frame(encode_request("get", {"k"}));
+    const std::string f2 = encode_frame(encode_request("put", {"k", "v"}));
+    const std::string buf = f1 + f2;
+
+    std::size_t off = 0;
+    std::string_view body;
+    REQUIRE(next_frame(buf, off, body) == FrameStatus::Ok);
+    std::string cmd;
+    std::vector<std::string> args;
+    REQUIRE(decode_request(body, cmd, args));
+    REQUIRE(cmd == "get");
+    REQUIRE(off == f1.size());
+
+    REQUIRE(next_frame(buf, off, body) == FrameStatus::Ok);
+    REQUIRE(decode_request(body, cmd, args));
+    REQUIRE(cmd == "put");
+    REQUIRE(off == buf.size());
+
+    // 无更多数据
+    REQUIRE(next_frame(buf, off, body) == FrameStatus::Incomplete);
+
+    // 半帧 -> Incomplete
+    std::size_t half = f1.size() - 1;
+    std::string_view trunc(buf.data(), half);
+    std::size_t off2 = 0;
+    REQUIRE(next_frame(trunc, off2, body) == FrameStatus::Incomplete);
+
+    // 版本非法 -> Invalid
+    std::string bad = f1;
+    bad[0] = '\x02';
+    std::size_t off3 = 0;
+    REQUIRE(next_frame(bad, off3, body) == FrameStatus::Invalid);
+}
