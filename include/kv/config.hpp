@@ -13,7 +13,7 @@
 namespace kv {
 
 struct ServerConfig {
-    std::string bind = "127.0.0.1";  // IPv4 绑定地址
+    std::string bind = "127.0.0.1";     // IPv4 地址
     std::uint16_t port = kDefaultPort;
     std::size_t capacity = 64;
     std::string aof_path = "kv.aof";
@@ -27,11 +27,12 @@ struct ClientConfig {
 
 static inline void print_server_usage()
 {
-    std::cerr << "KVCache-Server --port <n> [--bind <ip>] [--capacity <n>]"
+    std::cerr << "KVCache-Server"
+                 " --port <n> [--bind <ip>] [--capacity <n>]"
                  " [--aof <path>] [--fsync always|os]\n";
 }
 
-// 解析结果: 0 成功, 1 出错(err 有值), 2 已打印用法
+// 解析结果: 0 成功, 1 出错(通过 err 返回), 2 已打印用法
 static inline int parse_server_args(int argc, char** argv, ServerConfig& cfg,
                                     std::string& err)
 {
@@ -109,7 +110,8 @@ static inline void print_client_usage()
     std::cerr << "KVCache-Client [--host <ip>] [--port <n>] <command> [args...]\n";
 }
 
-// 解析结果: 0 成功, 1 出错, 2 已打印用法; first_pos 为首个非选项参数下标
+// 解析结果: 0 成功, 1 出错, 2 已打印用法;
+// first_pos 为首个非选项参数下标
 static inline int parse_client_args(int argc, char** argv, ClientConfig& cfg,
                                     int& first_pos, std::string& err)
 {

@@ -7,7 +7,8 @@
 
 namespace kv {
 
-// 请求: 命令名 + 参数
+// 请求
+// 命令名 + 参数
 struct Request {
     std::string cmd;
     std::vector<std::string> args;
