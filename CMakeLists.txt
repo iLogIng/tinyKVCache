@@ -65,6 +65,7 @@ add_executable(kv_tests
     tests/test_journal.cpp
     tests/test_net.cpp
     tests/test_client.cpp
+    tests/test_config.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(kv_tests PRIVATE kvcache_core kvcache_net Catch2::Catch2WithMain Threads::Threads)
