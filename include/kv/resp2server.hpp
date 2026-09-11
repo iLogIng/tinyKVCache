@@ -16,7 +16,8 @@ namespace kv {
 void resp2_dispatch(Engine& engine, const std::vector<std::string>& args,
                     std::string& out);
 
-// RESP2 网络服务: 单线程多连接, 监听并执行请求
+// RESP2 网络服务
+// 单线程多连接, 监听并执行请求
 class Resp2Server {
 public:
     explicit Resp2Server(ServerConfig config);
@@ -38,12 +39,12 @@ private:
 
     static void set_nonblock(int fd);
     bool setup();
-    void update_events(Conn& c);  // 按写缓冲增删 EPOLLOUT
-    void sync_and_release();      // 刷盘后放行待发送响应
+    void update_events(Conn& c);    // 按写缓冲增删 EPOLLOUT
+    void sync_and_release();        // 刷盘后放行待发送响应
     void on_readable(Conn& c);
     void on_writable(Conn& c);
 
-    static constexpr int kMaxEvents = 64;  // epoll_wait 单次事件上限
+    static constexpr int kMaxEvents = 64;   // epoll_wait 单次事件上限
 
     ServerConfig config_;                   // 配置
     int lfd_ = -1;                          // 监听文件描述符

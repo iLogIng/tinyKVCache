@@ -3,7 +3,8 @@
 namespace kv {
 namespace {
 
-// 读取一行(不含 \r\n), pos 前移到行后; 无完整行返回 false
+// 读取一行(不含 \r\n), pos 前移到行后
+// 无完整行返回 false
 bool read_line(std::string_view buf, std::size_t& pos, std::string_view& line)
 {
     const std::size_t p = buf.find("\r\n", pos);
@@ -11,6 +12,7 @@ bool read_line(std::string_view buf, std::size_t& pos, std::string_view& line)
         return false;
     }
     line = buf.substr(pos, p - pos);
+    // 跳过 \r\n
     pos = p + 2;
     return true;
 }

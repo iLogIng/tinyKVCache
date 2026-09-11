@@ -84,8 +84,7 @@ void resp2_dispatch(Engine& engine, const std::vector<std::string>& args,
 Resp2Server::Resp2Server(ServerConfig config)
     : config_(std::move(config))
     , engine_(config_.capacity)
-{
-}
+{ }
 
 // 设置文件非阻塞读写
 void Resp2Server::set_nonblock(int fd)
@@ -153,7 +152,8 @@ bool Resp2Server::setup()
     return true;
 }
 
-// 按写缓冲增删 EPOLLOUT; 有待落盘写响应时不发
+// 按写缓冲增删 EPOLLOUT
+// 有待落盘写响应时不发送
 void Resp2Server::update_events(Conn& c)
 {
     epoll_event ev{};
@@ -169,7 +169,8 @@ void Resp2Server::update_events(Conn& c)
     }
 }
 
-// 刷盘后放行待发送响应; 失败则关闭待落盘连接
+// 刷盘后放行待发送响应
+// 失败则关闭待落盘连接
 void Resp2Server::sync_and_release()
 {
     if (!journal_.sync()) {
@@ -216,7 +217,7 @@ void Resp2Server::on_readable(Conn& c)
                 resp2_dispatch(engine_, args, reply);
                 c.out += reply;
                 if (journal_.write_fail_count() != before_f) {
-                    c.gone = true;  // 记日志失败, 关闭连接
+                    c.gone = true;  // 日志记录失败, 关闭连接
                     return;
                 }
                 if (journal_.write_count() != before_w && config_.fsync == Fsync::Group) {
