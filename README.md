@@ -163,6 +163,10 @@ struct Slot {
   - `os` 交给系统回写
   - fsync 失败：关闭待落盘连接，不返回假 ACK
 
+## RESP2 子集支持
+
+***[RESP2 子集](./RESP2.md)***
+
 ## STRUCT 结构
 
 ```
