@@ -33,6 +33,15 @@ target_include_directories(kvcache_server PUBLIC include)
 target_link_libraries(kvcache_server PRIVATE kvcache_core kvcache_net)
 target_compile_options(kvcache_server PRIVATE -Wall -Wextra)
 
+add_library(kvcache_resp2 STATIC
+    src/kv/resp2.cpp
+    src/kv/resp2server.cpp
+)
+
+target_include_directories(kvcache_resp2 PUBLIC include)
+target_link_libraries(kvcache_resp2 PRIVATE kvcache_core)
+target_compile_options(kvcache_resp2 PRIVATE -Wall -Wextra)
+
 add_executable(KVCache-LocalCli example/local_cli_main.cpp)
 target_link_libraries(KVCache-LocalCli PRIVATE kvcache_core)
 target_compile_options(KVCache-LocalCli PRIVATE -Wall -Wextra)
@@ -44,6 +53,10 @@ target_compile_options(KVCache-RemoteCli PRIVATE -Wall -Wextra)
 add_executable(KVCache-Server example/server_main.cpp)
 target_link_libraries(KVCache-Server PRIVATE kvcache_server)
 target_compile_options(KVCache-Server PRIVATE -Wall -Wextra)
+
+add_executable(KVCache-Resp2Server example/resp2_server_main.cpp)
+target_link_libraries(KVCache-Resp2Server PRIVATE kvcache_resp2)
+target_compile_options(KVCache-Resp2Server PRIVATE -Wall -Wextra)
 
 add_executable(KVCache-Client example/client_main.cpp)
 target_link_libraries(KVCache-Client PRIVATE kvcache_net)
@@ -66,9 +79,10 @@ add_executable(kv_tests
     tests/test_net.cpp
     tests/test_client.cpp
     tests/test_config.cpp
+    tests/test_resp2.cpp
 )
 find_package(Threads REQUIRED)
-target_link_libraries(kv_tests PRIVATE kvcache_core kvcache_net Catch2::Catch2WithMain Threads::Threads)
+target_link_libraries(kv_tests PRIVATE kvcache_core kvcache_net kvcache_resp2 Catch2::Catch2WithMain Threads::Threads)
 target_compile_options(kv_tests PRIVATE -Wall -Wextra)
 
 add_test(NAME kv_tests COMMAND kv_tests)
